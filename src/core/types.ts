@@ -482,6 +482,66 @@ export interface SearchResult {
    */
   effective_date?: string | null;
   effective_date_source?: string | null;
+  /**
+   * v0.40.4 graph signals — populated by applyGraphSignals when the
+   * graph_signals mode-bundle knob is on. Surfaced in JSON envelope
+   * for agent introspection + the `gbrain search --explain` formatter.
+   */
+  /** Number of OTHER top-K pages linking to this page (>= ADJACENCY_MIN_HITS). */
+  graph_adjacency_hits?: number;
+  /** Number of distinct OTHER source_ids (excluding this page's own source)
+   *  linking to this page from within top-K (>= CROSS_SOURCE_MIN_HITS). */
+  graph_cross_source_hits?: number;
+  /** True when this result was demoted (score multiplied by SESSION_DEMOTE)
+   *  because it shares a session prefix with a higher-scoring result. */
+  graph_session_demoted?: boolean;
+  /** Slug prefix used for the session-diversification grouping. */
+  graph_session_prefix?: string;
+  /**
+   * v0.40.4 full attribution (D12=A) — per-stage score deltas for the
+   * `gbrain search --explain` formatter. Every boost stage stamps its
+   * contribution so the formatter can reconstruct the score derivation.
+   *
+   * base_score is captured once at runPostFusionStages entry BEFORE any
+   * mutation; the other fields are stamped by their respective stages.
+   */
+  /** RRF + cosine score BEFORE any boost stage mutated it. */
+  base_score?: number;
+  /** Multiplier applied by applyBacklinkBoost (1.0 = unchanged). */
+  backlink_boost?: number;
+  /** Multiplier applied by applySalienceBoost. */
+  salience_boost?: number;
+  /** Multiplier applied by applyRecencyBoost. */
+  recency_boost?: number;
+  /** Multiplier applied by applyExactMatchBoost. */
+  exact_match_boost?: number;
+  /** Multiplier applied by applyGraphSignals (adjacency hit). */
+  graph_adjacency_boost?: number;
+  /** Multiplier applied by applyGraphSignals (cross-source hit). */
+  graph_cross_source_boost?: number;
+  /** Multiplier applied by applyGraphSignals (session demote; <1.0). */
+  session_demote_factor?: number;
+  /** Post-rerank score delta (final - pre-rerank). NULL when no reranker fired. */
+  reranker_delta?: number;
+}
+
+/**
+ * v0.40.4 — adjacency aggregates for a single page within a
+ * subgraph induced by an input set. Returned by
+ * BrainEngine.getAdjacencyBoosts.
+ */
+export interface AdjacencyRow {
+  /** Distinct from_page_id count, restricted to the input set. */
+  hits: number;
+  /**
+   * Distinct OTHER source_id count, restricted to the input set,
+   * EXCLUDING the target page's own source. A page in source A linked
+   * from 2 pages in source A reports cross_source_hits = 0. Linked
+   * from 1 in source B + 1 in source C reports 2. The exclusion of
+   * self-source matches the "cross-team corroboration" intent
+   * (D15=A in the v0.40.4 plan).
+   */
+  cross_source_hits: number;
 }
 
 /**

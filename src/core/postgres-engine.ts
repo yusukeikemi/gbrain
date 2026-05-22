@@ -2248,6 +2248,46 @@ export class PostgresEngine implements BrainEngine {
     return result;
   }
 
+  async getAdjacencyBoosts(pageIds: number[]): Promise<Map<number, import('./types.ts').AdjacencyRow>> {
+    const result = new Map<number, import('./types.ts').AdjacencyRow>();
+    if (pageIds.length === 0) return result;
+
+    const sql = this.sql;
+    // SQL contract: see BrainEngine.getAdjacencyBoosts JSDoc. Both ANY
+    // filters restrict the scan to the input set's induced subgraph,
+    // which keeps cross-source leakage impossible by construction.
+    // cross_source_hits uses COALESCE so NULL source_id rows behave as
+    // 'default' and don't silently disappear from the count.
+    const rows = await sql`
+      WITH targets AS (
+        SELECT id, COALESCE(source_id, 'default') AS source_id
+        FROM pages
+        WHERE id = ANY(${pageIds}::int[])
+      )
+      SELECT
+        l.to_page_id AS to_page_id,
+        COUNT(DISTINCT l.from_page_id)::int AS hits,
+        COUNT(DISTINCT
+          CASE WHEN COALESCE(p.source_id, 'default') <> t.source_id
+               THEN COALESCE(p.source_id, 'default') END
+        )::int AS cross_source_hits
+      FROM links l
+      JOIN pages   p ON p.id = l.from_page_id
+      JOIN targets t ON t.id = l.to_page_id
+      WHERE l.from_page_id = ANY(${pageIds}::int[])
+        AND l.to_page_id   = ANY(${pageIds}::int[])
+      GROUP BY l.to_page_id
+      HAVING COUNT(DISTINCT l.from_page_id) >= 1
+    `;
+    for (const r of rows as unknown as { to_page_id: number; hits: number; cross_source_hits: number }[]) {
+      result.set(Number(r.to_page_id), {
+        hits: Number(r.hits),
+        cross_source_hits: Number(r.cross_source_hits),
+      });
+    }
+    return result;
+  }
+
   async getPageTimestamps(slugs: string[]): Promise<Map<string, Date>> {
     if (slugs.length === 0) return new Map();
     const sql = this.sql;
