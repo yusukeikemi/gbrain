@@ -776,7 +776,7 @@ export class PostgresEngine implements BrainEngine {
     // v0.32.7 CJK wave: chunker_version + source_path columns.
     const chunkerVersion = page.chunker_version ?? null;
     const sourcePath = page.source_path ?? null;
-    // v0.38.3.0 provenance write-through (WARN-8 + CV12). Server stamps
+    // v0.39.3.0 provenance write-through (WARN-8 + CV12). Server stamps
     // `ingested_at = now()` ONLY when any provenance is being written —
     // null `source_kind` / `source_uri` / `ingested_via` means no provenance
     // write fired this call, and COALESCE-preserve UPDATE keeps the prior

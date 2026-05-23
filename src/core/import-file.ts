@@ -258,7 +258,7 @@ export async function importFromContent(
 
   const parsed = parseMarkdown(content, slug + '.md', { activePack: opts.activePack });
 
-  // v0.38.3.0 CV8 — DB content_hash excludes timestamp-bearing frontmatter
+  // v0.39.3.0 CV8 — DB content_hash excludes timestamp-bearing frontmatter
   // keys so identical body content from `gbrain capture` (which stamps
   // `captured_at` and `ingested_at` per call) produces a stable hash.
   // Pre-fix, every capture-cli invocation produced a fresh hash because
@@ -376,7 +376,7 @@ export async function importFromContent(
       // code can resolve frontmatter-fallback slugs back to their files.
       chunker_version: MARKDOWN_CHUNKER_VERSION,
       source_path: opts.sourcePath ?? null,
-      // v0.38.3.0 provenance write-through (WARN-8). Engine layer applies
+      // v0.39.3.0 provenance write-through (WARN-8). Engine layer applies
       // COALESCE-preserve UPDATE so omitting these on a later put_page
       // doesn't erase the original ingestion's audit trail.
       source_kind: opts.source_kind ?? null,

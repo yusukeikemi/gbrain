@@ -538,7 +538,7 @@ const put_page: Operation = {
   params: {
     slug: { type: 'string', required: true, description: 'Page slug' },
     content: { type: 'string', required: true, description: 'Full markdown content with YAML frontmatter' },
-    // v0.38.3.0 provenance write-through (WARN-8 + A1 + CV6). Optional fields
+    // v0.39.3.0 provenance write-through (WARN-8 + A1 + CV6). Optional fields
     // for trusted local callers (capture CLI, autopilot, dream cycle). Remote
     // MCP callers (ctx.remote !== false) have their values OVERRIDDEN with
     // server stamps below; the params are accepted on the wire only so the
@@ -553,7 +553,7 @@ const put_page: Operation = {
   handler: async (ctx, p) => {
     const slug = p.slug as string;
 
-    // v0.38.3.0 CV6 trust gate for provenance write-through (WARN-8).
+    // v0.39.3.0 CV6 trust gate for provenance write-through (WARN-8).
     // Only trusted LOCAL callers (ctx.remote === false — capture CLI,
     // autopilot, dream cycle, file watcher) may populate source_kind /
     // source_uri / ingested_via from their own state. Anything else

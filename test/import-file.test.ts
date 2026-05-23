@@ -506,7 +506,7 @@ Content.
   });
 });
 
-// v0.38.3.0 CV8 Phase 3d — DB content_hash excludes timestamp-bearing
+// v0.39.3.0 CV8 Phase 3d — DB content_hash excludes timestamp-bearing
 // frontmatter keys (captured_at, ingested_at) so identical body content
 // from capture-cli produces a stable hash across multiple captures.
 // Pre-fix, every capture invocation produced a fresh hash because the

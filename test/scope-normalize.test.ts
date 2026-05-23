@@ -1,5 +1,5 @@
 /**
- * v0.38.3.0 WARN-9 + CV12 — normalizeScopesInput contract.
+ * v0.39.3.0 WARN-9 + CV12 — normalizeScopesInput contract.
  *
  * The admin SPA at /admin/api/register-client sends `scopes` as either a
  * string ('read write') or an array (['read', 'write']) depending on UI

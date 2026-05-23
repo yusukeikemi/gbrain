@@ -1,5 +1,5 @@
 /**
- * v0.38.3.0 BUG-1: capture --file doubles frontmatter on files that
+ * v0.39.3.0 BUG-1: capture --file doubles frontmatter on files that
  * already have frontmatter. The fix replaces buildContent's
  * always-prepend behavior with a gray-matter-backed merge that user-wins
  * for declared keys.

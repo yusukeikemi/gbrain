@@ -206,7 +206,7 @@ describeE2E('serve-http POST /ingest webhook (v0.38)', () => {
     expect(body.message?.toLowerCase()).toContain('non-empty');
   });
 
-  // v0.38.3.0 BUG-2 regression: when express.raw() doesn't populate req.body
+  // v0.39.3.0 BUG-2 regression: when express.raw() doesn't populate req.body
   // (no Content-Length / no body / specific middleware-chain conditions),
   // req.body is `undefined`. The pre-fix code's `else` branch fell through
   // to `Buffer.from(JSON.stringify(undefined), 'utf8')` — and

@@ -40,7 +40,7 @@ const CLI_ONLY_SELF_HELP = new Set([
   'models',
   'cache',
   'brainstorm', 'lsd',
-  // v0.38.3.0 WARN-5: capture's detailed HELP constant
+  // v0.39.3.0 WARN-5: capture's detailed HELP constant
   // (src/commands/capture.ts:90+) was unreachable because the dispatcher's
   // generic short-circuit (printCliOnlyHelp at :204-208) fired before
   // runCapture saw --help. brainstorm + lsd were already in the set;
@@ -1078,7 +1078,7 @@ async function handleCliOnly(command: string, args: string[]) {
     return;
   }
 
-  // v0.38.3.0 WARN-5: same pattern for `capture --help`. CLI_ONLY_SELF_HELP
+  // v0.39.3.0 WARN-5: same pattern for `capture --help`. CLI_ONLY_SELF_HELP
   // now includes 'capture' so the generic short-circuit at :101 stays out
   // of the way, but the dispatch case at :1229 still needs an engine. The
   // pre-engine-bind branch here exposes the HELP constant without requiring

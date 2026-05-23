@@ -37,7 +37,7 @@ export const FACTS_ABSORB_REASONS = [
   'pipeline_error',
 ] as const;
 
-// v0.38.3.0 WARN-4 + CV13 — module-scoped flag so the first-occurrence
+// v0.39.3.0 WARN-4 + CV13 — module-scoped flag so the first-occurrence
 // diagnostic log fires ONCE per process. Subsequent occurrences of the
 // same 'No database connection' class are suppressed (keeps captures
 // quiet) but the first one prints enough context to triage why the
@@ -82,7 +82,7 @@ export async function writeFactsAbsorbLog(
       summary: `${reason}: ${cleanedDetail}`,
     });
   } catch (e) {
-    // v0.38.3.0 WARN-4 + CQ1 — typed access via instanceof + .problem field
+    // v0.39.3.0 WARN-4 + CQ1 — typed access via instanceof + .problem field
     // (NOT string-match on e.message). The 'No database connection' class
     // fires after every `gbrain capture` invocation because the facts
     // subsystem opens its own engine handle that isn't connected in the

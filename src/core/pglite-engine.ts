@@ -702,7 +702,7 @@ export class PGLiteEngine implements BrainEngine {
     // v0.32.7 CJK wave: chunker_version + source_path columns.
     const chunkerVersion = page.chunker_version ?? null;
     const sourcePath = page.source_path ?? null;
-    // v0.38.3.0 provenance write-through (WARN-8 + CV12). Mirrors postgres-engine.ts.
+    // v0.39.3.0 provenance write-through (WARN-8 + CV12). Mirrors postgres-engine.ts.
     // Server stamps `ingested_at = now()` ONLY when any provenance field is being
     // written this call. COALESCE-preserve UPDATE keeps the prior first-write
     // timestamp intact so the audit trail survives routine edits.

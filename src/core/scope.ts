@@ -119,7 +119,7 @@ export function parseScopeString(s: string | undefined | null): string[] {
 }
 
 /**
- * v0.38.3.0 WARN-9 + CV12 — normalize the `scopes` (or `scope`) field that
+ * v0.39.3.0 WARN-9 + CV12 — normalize the `scopes` (or `scope`) field that
  * arrives from the admin SPA's register-client request body to the
  * space-separated wire format `registerClientManual` expects. Three valid
  * input shapes; everything else throws Error to be caught and surfaced

@@ -472,7 +472,7 @@ const DEFAULT_PARALLELISM = 4;
  * via formatBrainstormMarkdown; optionally saves via put_page.
  */
 /**
- * v0.38.3.0 WARN-10 + CV11 — Public entry point. Wraps the impl in a
+ * v0.39.3.0 WARN-10 + CV11 — Public entry point. Wraps the impl in a
  * single try/catch that classifies Postgres SQLSTATE 57014
  * (query_canceled) into a `StructuredAgentError` with code
  * 'brainstorm_timeout'. Covers EVERY internal SQL site (hybrid search,

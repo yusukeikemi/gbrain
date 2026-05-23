@@ -141,7 +141,7 @@ function defaultSlug(content: string, now: Date = new Date()): string {
 }
 
 /**
- * v0.38.3.0 CV10 — binary file guard. Scans the first 8KB of `buf` for a
+ * v0.39.3.0 CV10 — binary file guard. Scans the first 8KB of `buf` for a
  * NUL byte (0x00). Real text files (including UTF-8 with multi-byte CJK,
  * emoji, BOM) never contain a NUL byte at any position — text encoding
  * uses non-zero continuation bytes. NUL appears in binary formats:
@@ -172,7 +172,7 @@ async function readStdinBuffer(): Promise<Buffer> {
 }
 
 /**
- * v0.38.3.0 CV9 — normalize content for content_hash so identical text
+ * v0.39.3.0 CV9 — normalize content for content_hash so identical text
  * produces identical hashes regardless of leading/trailing whitespace,
  * line-ending style (CRLF vs LF), or Unicode normalization form. The
  * STORED body is preserved as-is (CRLF stays CRLF, BOM stays BOM).
@@ -187,7 +187,7 @@ export function normalizeForHash(s: string): string {
 }
 
 /**
- * v0.38.3.0 A2 + CV6 — detect Postgres FK violation on the sources table
+ * v0.39.3.0 A2 + CV6 — detect Postgres FK violation on the sources table
  * in an error message and return a friendly hint. Returns null when the
  * error doesn't match. Used by BOTH the local-engine catch block AND
  * the thin-client (callRemoteTool) catch block per T1.
@@ -223,7 +223,7 @@ function deriveTitle(rawBody: string): string {
 }
 
 /**
- * v0.38.3.0 (BUG-1): merge capture's auto-stamped fields with any existing
+ * v0.39.3.0 (BUG-1): merge capture's auto-stamped fields with any existing
  * frontmatter in `rawBody`, rather than always prepending a second
  * frontmatter block. The pre-fix code stamped its own `---` block on top
  * of files that already had frontmatter, producing `title: '---'` (the
@@ -298,7 +298,7 @@ export function mergeCaptureFrontmatter(rawBody: string, opts: RunOpts): string 
  * the auto-stamped capture provenance go in the frontmatter so future
  * tools (e.g. the inbox triage UI) can find captures.
  *
- * v0.38.3.0: delegates to `mergeCaptureFrontmatter` so files with existing
+ * v0.39.3.0: delegates to `mergeCaptureFrontmatter` so files with existing
  * frontmatter merge instead of double-wrap (BUG-1).
  */
 function buildContent(rawBody: string, opts: RunOpts): string {
@@ -342,7 +342,7 @@ export async function runCapture(engine: BrainEngine | null, args: string[]): Pr
     return;
   }
 
-  // v0.38.3.0 CV7: thin-client installs cannot scope --source via put_page
+  // v0.39.3.0 CV7: thin-client installs cannot scope --source via put_page
   // params. The server's auth/transport layer (OAuth client registration's
   // source_id / federated_read) determines source scope. Reject early with
   // a clear error pointing at the right fix; matches CV6 trust posture
@@ -356,7 +356,7 @@ export async function runCapture(engine: BrainEngine | null, args: string[]): Pr
     process.exit(1);
   }
 
-  // v0.38.3.0 CV10 — resolve content as a Buffer FIRST so the binary guard
+  // v0.39.3.0 CV10 — resolve content as a Buffer FIRST so the binary guard
   // sees real bytes (not UTF-8-decoded mojibake). Stdin uses the same
   // Buffer path so --stdin gets the same protection as --file.
   let rawBuffer: Buffer | null = null;
@@ -522,14 +522,14 @@ export async function runCapture(engine: BrainEngine | null, args: string[]): Pr
     },
     dryRun: false,
     remote: false,
-    // v0.38.3.0 CV15: thread the resolved source from the canonical 6-tier
+    // v0.39.3.0 CV15: thread the resolved source from the canonical 6-tier
     // chain (was `parsed.source ?? 'default'` pre-fix, which silently
     // ignored env / dotfile / local_path / brain_default tiers — divergent
     // from every other CLI op's behavior).
     sourceId: resolvedSourceId,
   };
   try {
-    // v0.38.3.0 WARN-8: pass provenance params to put_page. CV3 source_kind
+    // v0.39.3.0 WARN-8: pass provenance params to put_page. CV3 source_kind
     // is always 'capture-cli'; ingested_via is 'put_page' (the write API),
     // source_uri identifies the file path or stdin marker.
     const sourceUri = parsed.filePath

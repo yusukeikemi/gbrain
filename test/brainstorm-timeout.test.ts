@@ -1,5 +1,5 @@
 /**
- * v0.38.3.0 WARN-10 + CV11 + T4 — brainstorm timeout classifier.
+ * v0.39.3.0 WARN-10 + CV11 + T4 — brainstorm timeout classifier.
  *
  * Pre-fix: brainstorm + lsd silently produced no output on PgBouncer
  * transaction-mode environments when listPrefixSampledPages or hybrid

@@ -1,5 +1,5 @@
 /**
- * v0.38.3.0 Phase 3c — capture CLI write-side test surface.
+ * v0.39.3.0 Phase 3c — capture CLI write-side test surface.
  *
  * Covers the pure helpers introduced/changed in capture.ts as a unit
  * test (not the full runCapture orchestration; that's exercised via

@@ -1,5 +1,5 @@
 /**
- * v0.38.3.0 WARN-5 + WARN-6 — CLI help discoverability.
+ * v0.39.3.0 WARN-5 + WARN-6 — CLI help discoverability.
  *
  * WARN-5: `gbrain capture --help` was showing only the generic
  * `Usage: gbrain capture` line because `capture` was missing from

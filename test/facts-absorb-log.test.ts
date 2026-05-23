@@ -122,7 +122,7 @@ describe('writeFactsAbsorbLog — ingest_log row shape', () => {
   });
 });
 
-// v0.38.3.0 WARN-4 + CQ1 + CV13 — disconnected-engine suppression.
+// v0.39.3.0 WARN-4 + CQ1 + CV13 — disconnected-engine suppression.
 // Pre-fix: '[facts:absorb] failed to log gateway_error for inbox/...: No
 // database connection' fired loudly after every gbrain capture. Per CQ1
 // suppress via typed access (instanceof GBrainError && .problem) NOT

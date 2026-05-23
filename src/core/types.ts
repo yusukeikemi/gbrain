@@ -124,7 +124,7 @@ export interface Page {
    */
   source_id: string;
 
-  // v0.38.3.0 provenance read-path (WARN-8 + CV5). Migration v81 columns
+  // v0.39.3.0 provenance read-path (WARN-8 + CV5). Migration v81 columns
   // surfaced through getPage / list_pages so `gbrain call get_page | jq
   // .source_kind` actually returns the value the put_page op wrote. NULL
   // on historical pages that pre-date v0.38. Three-state read pattern
@@ -192,8 +192,8 @@ export interface PageInput {
    */
   source_path?: string | null;
 
-  // v0.38.3.0 provenance write-through (WARN-8 + A1 + CV6).
-  // Migration v81 added these 4 nullable columns to `pages`. Until v0.38.3.0,
+  // v0.39.3.0 provenance write-through (WARN-8 + A1 + CV6).
+  // Migration v81 added these 4 nullable columns to `pages`. Until v0.39.3.0,
   // put_page wrote them into the file's frontmatter (via the write-through
   // path) but never to the DB columns — `gbrain call get_page | jq .source_kind`
   // returned null even though the JSON receipt claimed `capture-cli`. These

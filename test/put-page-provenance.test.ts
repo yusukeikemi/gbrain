@@ -1,5 +1,5 @@
 /**
- * v0.38.3.0 WARN-8 / A1 / CV6 / CV12 / T2 — put_page provenance.
+ * v0.39.3.0 WARN-8 / A1 / CV6 / CV12 / T2 — put_page provenance.
  *
  * Migration v81 added 4 nullable provenance columns to `pages`
  * (source_kind, source_uri, ingested_via, ingested_at). This test

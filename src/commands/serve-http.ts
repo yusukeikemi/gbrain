@@ -1090,7 +1090,7 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
   // Register client from admin dashboard
   app.post('/admin/api/register-client', requireAdmin, express.json(), async (req: Request, res: Response) => {
     try {
-      // v0.38.3.0 WARN-9 + CV12: accept BOTH `scopes` (admin SPA convention)
+      // v0.39.3.0 WARN-9 + CV12: accept BOTH `scopes` (admin SPA convention)
       // AND `scope` (OAuth wire-format convention, singular). The pre-fix
       // code destructured only `scopes` and used `scopes || 'read'` which:
       //   - Silently ignored `scope` requests (always defaulted to 'read')
@@ -1605,7 +1605,7 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
       const authInfo = (req as Request & { auth?: AuthInfo }).auth as AuthInfo;
       const agentName = authInfo.clientName ?? authInfo.clientId;
 
-      // v0.38.3.0 BUG-2: outer try/catch ensures any unexpected throw
+      // v0.39.3.0 BUG-2: outer try/catch ensures any unexpected throw
       // returns a JSON envelope instead of leaking express's default HTML
       // error page. Mirrors the MCP handler's F14 pattern (serve-http.ts
       // F14 envelope around transport.handleRequest). The `!res.headersSent`
@@ -1613,7 +1613,7 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
       // happens after the inner queue.add try/catch already responded.
       try {
 
-      // v0.38.3.0 BUG-2: explicit null/undefined guard BEFORE body coercion.
+      // v0.39.3.0 BUG-2: explicit null/undefined guard BEFORE body coercion.
       // When the request has no body at all (no Content-Length header, no
       // body-parser fed us anything), `req.body` is `undefined`. The pre-fix
       // code's `else` branch called `Buffer.from(JSON.stringify(undefined),
@@ -1769,7 +1769,7 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
         });
       }
 
-      // v0.38.3.0 BUG-2: outer try/catch close — anything that throws BEFORE
+      // v0.39.3.0 BUG-2: outer try/catch close — anything that throws BEFORE
       // the inner queue.add try/catch lands here. The headersSent guard
       // (codex F#16) skips the second-response attempt if the inner block
       // already wrote a response and then threw on a downstream line (e.g.

@@ -225,7 +225,7 @@ describeBoth('Engine parity — Postgres vs PGLite', () => {
     expect(pgChanged || pgliteChanged).toBe(true);
   });
 
-  // v0.38.3.0 T3 — provenance write+read parity (WARN-8 + CV5).
+  // v0.39.3.0 T3 — provenance write+read parity (WARN-8 + CV5).
   // Both engines must write the same 4 provenance columns (source_kind,
   // source_uri, ingested_via, ingested_at) on putPage AND surface them
   // on getPage. A drift here would mean `gbrain migrate --to supabase`
