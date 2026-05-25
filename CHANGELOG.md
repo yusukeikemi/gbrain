@@ -10,15 +10,6 @@ Until today, if you ran `gbrain search "fox"` on a PGLite brain, the results pri
 
 The fix turns out to be one structural change in two parts. v0.37 added a stale-page-detection feature that fires a background `UPDATE pages SET last_retrieved_at = NOW()` after every search/query/get. The CLI's job is to print the results, close the database, and exit — but on PGLite the database is a WASM runtime that holds Bun's event loop alive while the background UPDATE is still in flight. Closing the database mid-write strands the write on a dead handle, and Bun never notices the process is supposed to exit. So now the CLI explicitly waits for the background write to finish before closing the database. On the rare pathological case where the wait itself takes more than 5 seconds (a future bug we haven't seen yet but want to defend against), we log a stderr warning naming the leak and force-exit cleanly. Daemons (`gbrain serve`, `gbrain serve --http`) are explicitly excluded from the force-exit so they stay running.
 
-### How to take advantage of v0.41.8.0
-
-```bash
-gbrain upgrade
-# That's it. No config changes, no migrations. Re-run any scripted
-# search/query/get callers that were timing out — they should exit
-# cleanly now within 1-2 seconds.
-```
-
 For #1340 (PGLite WASM init failing on older macOS + Bun 1.3.x), the error message now correctly identifies the root cause as Bun's vfs read-only mount rather than the unrelated macOS 26.3 WASM bug:
 
 ```text
@@ -54,7 +45,7 @@ We took the drain from #1259, took the snapshot+early-null pattern from #1337, a
 - If you ever see `[last-retrieved] drain timed out after 5000ms; N writes still pending` on stderr, that's a defense-in-depth signal — it means a tracked background write took longer than 5 seconds. It's safe to ignore (the CLI still exits cleanly), but please file an issue with the pending count and the command you ran. This is how we'd find the next bug class in this surface.
 - #1342 (`gbrain sync` hang after schema v89→v92) is NOT fixed in this release. It's a single-reporter bug with a pure-JS infinite-loop shape (per `sample <pid>`) that doesn't match any of the hypotheses we ruled out. We've filed it as a follow-up investigation in [TODOS.md](TODOS.md) with concrete diagnostic next steps. If you hit it, please attach a `bun --inspect-brk` stack — the new breadcrumbs will name which phase to look at.
 
-### To take advantage of v0.41.8.0
+## To take advantage of v0.41.8.0
 
 `gbrain upgrade` should do this automatically. If you were hitting #1247/#1269/#1290 before, no manual action is required — the fix is in the binary.
 
@@ -62,13 +53,15 @@ We took the drain from #1259, took the snapshot+early-null pattern from #1337, a
    ```bash
    gbrain upgrade
    ```
-2. **Verify:**
+2. **Verify the CLI exits cleanly:**
    ```bash
    time gbrain search "test" --limit 3
    echo "EXIT=$?"
    ```
    `EXIT=0` and a wall time under 2 seconds (after the first cold-start) means the fix landed. Pre-fix you would see no exit at all.
 3. **If you hit #1340 on older macOS + Bun:** run `bun upgrade` and retry. If that doesn't help, install gbrain via Node instead of via the Bun-compiled binary.
+4. **If any step fails or you see new hangs**, please file an issue:
+   https://github.com/garrytan/gbrain/issues with the command you ran, your platform (macOS / Linux + Bun version), and whether you see the `[last-retrieved] drain timed out` stderr line.
 
 ### Itemized changes
 
