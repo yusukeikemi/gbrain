@@ -2000,10 +2000,83 @@ export class PGLiteEngine implements BrainEngine {
     afterPageId?: number;
     afterChunkIndex?: number;
     sourceId?: string;
+    orderBy?: 'page_id' | 'updated_desc';
+    afterUpdatedAt?: string | null;
   }): Promise<StaleChunkRow[]> {
     const limit = opts?.batchSize ?? 2000;
     const afterPid = opts?.afterPageId ?? 0;
     const afterIdx = opts?.afterChunkIndex ?? -1;
+    const orderBy = opts?.orderBy ?? 'page_id';
+
+    // v0.42.0.0 (A13, codex #9): --priority recent path. See postgres-engine
+    // sibling for full rationale. Same composite cursor + ORDER BY.
+    if (orderBy === 'updated_desc') {
+      const afterUpdated = opts?.afterUpdatedAt ?? null;
+      const isFirstPage = afterUpdated === null && afterPid === 0;
+      if (opts?.sourceId === undefined) {
+        const { rows } = isFirstPage ? await this.db.query(
+          `SELECT p.slug, cc.chunk_index, cc.chunk_text, cc.chunk_source,
+                  cc.model, cc.token_count, p.source_id, cc.page_id,
+                  p.updated_at
+             FROM content_chunks cc
+             JOIN pages p ON p.id = cc.page_id
+            WHERE cc.embedding IS NULL
+              AND NOT (COALESCE(p.frontmatter, '{}'::jsonb) ? 'embed_skip')
+            ORDER BY p.updated_at DESC NULLS LAST, p.id ASC, cc.chunk_index ASC
+            LIMIT $1`,
+          [limit],
+        ) : await this.db.query(
+          `SELECT p.slug, cc.chunk_index, cc.chunk_text, cc.chunk_source,
+                  cc.model, cc.token_count, p.source_id, cc.page_id,
+                  p.updated_at
+             FROM content_chunks cc
+             JOIN pages p ON p.id = cc.page_id
+            WHERE cc.embedding IS NULL
+              AND NOT (COALESCE(p.frontmatter, '{}'::jsonb) ? 'embed_skip')
+              AND (
+                p.updated_at < $1::timestamptz
+                OR (p.updated_at = $1::timestamptz AND p.id > $2)
+                OR (p.updated_at = $1::timestamptz AND p.id = $2 AND cc.chunk_index > $3)
+              )
+            ORDER BY p.updated_at DESC NULLS LAST, p.id ASC, cc.chunk_index ASC
+            LIMIT $4`,
+          [afterUpdated, afterPid, afterIdx, limit],
+        );
+        return rows as unknown as StaleChunkRow[];
+      }
+      const { rows } = isFirstPage ? await this.db.query(
+        `SELECT p.slug, cc.chunk_index, cc.chunk_text, cc.chunk_source,
+                cc.model, cc.token_count, p.source_id, cc.page_id,
+                p.updated_at
+           FROM content_chunks cc
+           JOIN pages p ON p.id = cc.page_id
+          WHERE cc.embedding IS NULL
+            AND p.source_id = $1
+            AND NOT (COALESCE(p.frontmatter, '{}'::jsonb) ? 'embed_skip')
+          ORDER BY p.updated_at DESC NULLS LAST, p.id ASC, cc.chunk_index ASC
+          LIMIT $2`,
+        [opts.sourceId, limit],
+      ) : await this.db.query(
+        `SELECT p.slug, cc.chunk_index, cc.chunk_text, cc.chunk_source,
+                cc.model, cc.token_count, p.source_id, cc.page_id,
+                p.updated_at
+           FROM content_chunks cc
+           JOIN pages p ON p.id = cc.page_id
+          WHERE cc.embedding IS NULL
+            AND p.source_id = $1
+            AND NOT (COALESCE(p.frontmatter, '{}'::jsonb) ? 'embed_skip')
+            AND (
+              p.updated_at < $2::timestamptz
+              OR (p.updated_at = $2::timestamptz AND p.id > $3)
+              OR (p.updated_at = $2::timestamptz AND p.id = $3 AND cc.chunk_index > $4)
+            )
+          ORDER BY p.updated_at DESC NULLS LAST, p.id ASC, cc.chunk_index ASC
+          LIMIT $5`,
+        [opts.sourceId, afterUpdated, afterPid, afterIdx, limit],
+      );
+      return rows as unknown as StaleChunkRow[];
+    }
+    // orderBy === 'page_id' — legacy stable cursor (unchanged below).
     // D7: optional source-scoped cursor scan. PGLite mirrors postgres-engine
     // so the engine-parity E2E catches drift.
     // v0.41 (D4+D8): NOT (frontmatter ? 'embed_skip') filter for soft-blocked
@@ -2705,7 +2778,7 @@ export class PGLiteEngine implements BrainEngine {
       `INSERT INTO timeline_entries (page_id, date, source, summary, detail)
        SELECT id, $2::date, $3, $4, $5
        FROM pages WHERE slug = $1 AND source_id = $6
-       ON CONFLICT (page_id, date, summary) DO NOTHING`,
+       ON CONFLICT (page_id, date, summary, source) DO NOTHING`,
       [slug, entry.date, entry.source || '', entry.summary, entry.detail || '', sourceId]
     );
   }
@@ -2724,7 +2797,7 @@ export class PGLiteEngine implements BrainEngine {
        FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[])
          AS v(slug, date, source, summary, detail, source_id)
        JOIN pages p ON p.slug = v.slug AND p.source_id = v.source_id
-       ON CONFLICT (page_id, date, summary) DO NOTHING
+       ON CONFLICT (page_id, date, summary, source) DO NOTHING
        RETURNING 1`,
       [slugs, dates, sources, summaries, details, sourceIds]
     );
@@ -4258,9 +4331,28 @@ export class PGLiteEngine implements BrainEngine {
     return (rows as Record<string, unknown>[]).map(r => rowToChunk(r, true));
   }
 
-  async executeRaw<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
-    const { rows } = await this.db.query(sql, params);
-    return rows as T[];
+  async executeRaw<T = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[],
+    opts?: { signal?: AbortSignal },
+  ): Promise<T[]> {
+    // v0.42.0.0 (A20, codex #7): PGLite is in-process WASM with no
+    // kernel-level cancellation. Best-effort: pre-check the signal so
+    // an already-aborted call returns immediately, and race against
+    // a settle promise so a late-arriving abort throws AbortError
+    // (the query keeps running in WASM until it returns; the result
+    // is discarded). Documented gap in src/core/engine.ts.
+    if (opts?.signal?.aborted) {
+      throw new DOMException('aborted', 'AbortError');
+    }
+    const queryPromise = this.db.query(sql, params).then((r) => r.rows as T[]);
+    if (!opts?.signal) return queryPromise;
+    const abortPromise = new Promise<T[]>((_resolve, reject) => {
+      opts.signal!.addEventListener('abort', () => {
+        reject(new DOMException('aborted', 'AbortError'));
+      }, { once: true });
+    });
+    return Promise.race([queryPromise, abortPromise]);
   }
 
   // ============================================================
