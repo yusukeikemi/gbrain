@@ -113,6 +113,457 @@ Closes meta-issue #1383 (`gbrain onboard`). Migration #1 (auto-link
 `--by-mention`) shipped earlier as v0.41.10.0. PR #1409 (the
 consolidated design doc) is implemented by this release.
 
+Note: schema migrations originally numbered v98/v99/v100 were renumbered
+to v101/v102/v103 post-merge because master claimed v98 (sync lock
+refresh column from v0.41.15.0) and v99 (conversation parser cache from
+v0.41.16.0). Migration content unchanged across the renumber.
+
+## [0.41.16.0] - 2026-05-26
+
+**Your brain now understands every common chat format, not just iMessage.**
+
+Before today, GBrain's conversation parser knew one shape:
+`**Name** (date time): text`. If your chat history came from Telegram, Discord,
+WhatsApp, Signal, IRC, Matrix, Teams, or anywhere else, the parser silently
+dropped every message and the dream cycle never extracted any facts. A real user
+reported 134 Telegram pages stuck in this state.
+
+We didn't fix it by adding one regex per format and shipping a release every
+time someone's chat export looked weird. GBrain now ships with a 12-pattern
+built-in registry covering the most common chat-export shapes on Earth, plus an
+opt-in LLM fallback for the long tail. The dream cycle picks the right parser
+per page automatically — no config, no waiting for the next release.
+
+The same wave introduces a new `progressive-batch` primitive (Wintermute-inspired
+ramp-up: trial 10 → 100 → 500 → full with verification at each stage) so future
+batch operations get the discipline for free instead of each reinventing it.
+
+### How to use it
+
+```
+gbrain upgrade                                    # picks up the new parser
+gbrain dream                                      # next cycle extracts facts from previously-stuck chat pages
+gbrain conversation-parser list-builtins          # see the 12 patterns shipped
+gbrain conversation-parser scan conversations/x   # debug which pattern matched (or didn't)
+gbrain eval conversation-parser test/fixtures/conversation-formats/all.jsonl --no-llm
+                                                  # the CI gate; runs in bun run verify
+```
+
+To opt INTO Haiku polish + fallback for the long-tail formats (private chat
+content DOES go to Anthropic when enabled — privacy posture, not just cost):
+
+```
+gbrain config set conversation_parser.llm_polish_enabled true
+gbrain config set conversation_parser.llm_fallback_enabled true
+```
+
+Cost expectation when enabled: ~$0.0002 per polished page, ~$0.0005 per
+fallback call. Bounded by the existing brain-wide `BudgetTracker` cap
+(default $5/cycle).
+
+### The 12 built-in patterns
+
+| id                     | sample                                          |
+|------------------------|-------------------------------------------------|
+| `imessage-slack`       | `**Alice** (2024-03-15 9:00 AM): hi`            |
+| `telegram-bracket`     | `**[18:37] 👤 Alice:** hi` (PR #1461 verbatim)  |
+| `telegram-text-export` | `Alice, [Mar 15, 2024 at 6:37:00 PM]`           |
+| `whatsapp-iso`         | `[15/03/24, 18:37:00] Alice: hi`                |
+| `whatsapp-us`          | `3/15/24, 6:37 PM - Alice: hi`                  |
+| `discord-export`       | `[03/15/2024 6:37 PM] Alice` + multi-line body  |
+| `discord-classic`      | `Alice — Today at 18:37` + multi-line body      |
+| `signal-export`        | `Alice (2024-03-15 18:37:00 UTC): hi`           |
+| `matrix-element`       | `[18:37] @alice:matrix.org: hi`                 |
+| `irc-classic`          | `<alice> hi`                                    |
+| `irc-weechat`          | `18:37 <alice> hi`                              |
+| `teams-export`         | `Alice, 3/15/2024 6:37 PM: hi`                  |
+
+Each pattern was sourced from a public format reference (signal-cli,
+DiscordChatExporter, Telegram Desktop export, WhatsApp export docs, Element
+matrix-archive scripts, irssi / weechat defaults). Every pattern carries
+`test_positive[]` + `test_negative[]` sample sets validated at module load —
+a typo in any built-in regex makes gbrain refuse to start.
+
+### What to watch for after upgrade
+
+- **Timezone handling.** Telegram/Discord/IRC/Matrix have time-only stamps
+  (no date in the line). The parser uses your page frontmatter's `date:` field
+  for the date and assumes UTC for the time unless you ALSO set
+  `timezone: America/Los_Angeles` (IANA zone) in frontmatter. Pages without a
+  frontmatter timezone get a one-time stderr warn so you know the fact
+  timestamps may be off by hours.
+- **Pattern priority scoring.** When multiple built-ins could match a page,
+  the orchestrator scores all candidates across the first 10 lines and picks
+  the highest match rate (declared priority as tie-breaker). Mixed-format
+  pages pick the dominant format — use `gbrain conversation-parser scan
+  <slug>` to see which one won.
+- **doctor checks.** `gbrain doctor` gains three new checks:
+  `conversation_format_coverage` (per-pattern hit count + unmatched %),
+  `progressive_batch_audit_health` (abort-verdict counts from the new
+  primitive's audit JSONL), and `conversation_parser_probe_health` (opt-in
+  nightly LLM-quality drift detection — skipped with enable-hint until you
+  flip the flag).
+
+### What we caught and fixed before merging
+
+Codex's independent review surfaced eight substantive technical risks that
+the eng review missed. All adopted:
+
+- **Privacy posture.** Default-ON LLM polish for private chat logs was the
+  wrong default. Reversed to opt-IN to match the existing
+  `nightly_quality_probe.enabled` precedent.
+- **ReDoS theater.** Promise.race cannot preempt a catastrophic JS regex.
+  v1 drops arbitrary user regex entirely; user patterns wait for v0.42+
+  with worker-isolated regex execution (safe-regex / RE2).
+- **LLM-inferred regex persistence.** Inferring a regex from 20 sampled
+  lines and persisting for future cycles is a silent-corruption machine
+  (real exports have day separators, edits, replies, locale shifts later
+  in the file). LLM fallback parses for THIS page only, cached by
+  content_hash.
+- **Pattern priority scoring.** "First built-in wins" silently mis-routes
+  when formats overlap. Replaced with a 10-line scoring pass.
+- **Timezone policy on every pattern.** Original plan hardcoded `Z`.
+  Now declared per-pattern; time-only formats emit a loud warn.
+- **Verifier shape.** Original `expectedDelta` contract didn't fit
+  reindex / embed / contradiction-eval. Refactored to a discriminated
+  union: `OutputCountVerifier | IdempotentMutationVerifier | NoopVerifier`.
+- **Behavior parity for retrofits.** Sites that previously "jumped
+  straight to full" keep doing so by default; ramp is opt-in per-site.
+- **Real-corpus fixture gap.** v1 ships synthetic fixtures only; real-
+  corpus-redacted fixtures filed as a follow-up TODO.
+
+### Itemized changes
+
+#### New: progressive-batch primitive
+
+- `src/core/progressive-batch/orchestrator.ts` — `runProgressiveBatch(items,
+  verifier, policy, runner)` with verifier+policy injection. Reads
+  `getCurrentBudgetTracker()` ahead of `Policy.maxCostUsd`; null both ways
+  triggers `abort_cost_cap reason='no_budget_safety_net'` (fail-closed).
+- `src/core/progressive-batch/types.ts` — `Stage`, `StageVerdict`,
+  `AbortReason`, discriminated `Verifier` union, `Policy`, `StageReport`.
+- `src/core/progressive-batch/audit.ts` — ISO-week JSONL at
+  `~/.gbrain/audit/progressive-batch-YYYY-Www.jsonl` via the shared
+  `audit-writer` primitive.
+- Env knobs: `GBRAIN_PROGRESSIVE_BATCH_DISABLED=1`,
+  `GBRAIN_PROGRESSIVE_BATCH_AUTO=1`,
+  `GBRAIN_PROGRESSIVE_BATCH_STAGES=10,100,500`.
+
+#### New: conversation-parser cathedral
+
+- `src/core/conversation-parser/{types,builtins,parse,llm-base,llm-polish,llm-fallback,eval,nightly-probe}.ts`
+  — 8 new modules; 12 built-in patterns with module-load validation;
+  `DEFAULT_SPEAKER_CLEAN` exported (the PR #1461 helper, promoted);
+  per-pattern `quick_reject` for O(1) prefix screening; per-pattern
+  `multi_line` flag for Discord-style multi-line bodies; per-pattern
+  `timezone_policy`.
+- `src/commands/extract-conversation-facts.ts` — `parseConversationMessages`
+  becomes a thin wrapper over the new orchestrator. `processPage` threads
+  the full Page through so frontmatter date / timezone / effective_date
+  precedence takes effect. PR #1461's 33 cases pass verbatim.
+
+#### Progressive-batch retrofit landing
+
+Three sites fully retrofitted onto the primitive in this PR (each ships
+with audit JSONL + cost-cap gate):
+- `src/commands/reindex.ts` (T11) — markdown chunker-version sweep.
+- `src/commands/reindex-code.ts` (T12) — code page re-import with
+  BudgetTracker integration preserved.
+- `src/commands/reindex-multimodal.ts` (T14) — streaming-checkpoint
+  shape preserved; per-batch audit row written to the primitive's
+  JSONL.
+
+Six sites documented with v0.41.14.0+ retrofit-deferred notes (each
+file's header explains WHY the bespoke shape needs a dedicated
+design pass): `src/core/post-upgrade-reembed.ts` (T13 — wrapper that
+calls T11 reindex; reindex's primitive wrap is the actual value),
+`src/commands/book-mirror.ts` (T15 — fan-out-to-MinionQueue, not a
+batch loop), `src/core/brainstorm/orchestrator.ts` (T16 — already
+has `withBudgetTracker` + own cost prompt), `src/commands/eval-suspected-contradictions.ts`
+(T17 — sampling probe lives at a different layer than the run loop),
+`src/core/minions/handlers/contextual-reindex-per-chunk.ts` (T18 —
+Minion handler; primitive value lives at submitter side),
+`src/commands/extract.ts` (T19 — pure deterministic regex, no LLM cost
+to gate). Per D26 + D21, behavior parity preservation is the priority;
+each deferred retrofit is filed in TODOS.md with the specific reason
+its shape needs more design.
+
+- `src/core/eval-contradictions/cost-prompt.ts` — marked `@deprecated`
+  for v0.41.14.0+; existing API + caller preserved for behavior parity.
+
+#### New CLI surfaces
+
+- `gbrain eval conversation-parser <fixture.jsonl> [--no-llm] [--min-recall F] [--json]`
+  — exit 0 PASS / 1 FAIL / 2 USAGE.
+- `gbrain conversation-parser scan <slug>` — dry-run on one page.
+- `gbrain conversation-parser list-builtins [--json]` — operator
+  discoverability.
+- `gbrain conversation-parser validate <file>` — v1 emits "deferred to
+  v0.42+" notice.
+
+#### Doctor
+
+- New checks: `conversation_format_coverage`,
+  `progressive_batch_audit_health`, `conversation_parser_probe_health`.
+
+#### CI gates
+
+- `bun run check:fixture-privacy` — banned-token grep over fixtures.
+- `bun run check:conversation-parser` — fixture-corpus eval gate with
+  `--no-llm` (deterministic, no API keys).
+
+#### Schema
+
+- Migration v97 (`conversation_parser_llm_cache_table`) — content-hash-keyed
+  cache for LLM polish + fallback. NO `inferred_patterns` table (codex
+  outside voice correctly identified inferred-regex persistence as a
+  silent-corruption machine).
+
+#### Tests
+
+- 35 unit cases for the progressive-batch primitive (every verdict path).
+- 39 unit cases for the parser orchestrator (PR #1461 6-case verbatim
+  regression, every built-in matches its `test_positive`, priority
+  scoring, date derivation, multi-line, quick_reject, timezone warning).
+- 16 + 6 + 6 unit cases for the LLM base / polish / fallback (provider
+  probe, cache hit, fail-open paths, headroom guard).
+- 7 unit cases for the nightly probe (mode-gated default, rate limit,
+  adversarial false-positive detection).
+- Existing 27 `extract-conversation-facts.test.ts` cases unchanged
+  (back-compat invariant).
+
+### Closed in this wave
+
+- PR #1461 ("feat: support bracket-time format in conversation facts
+  parser") — superseded. Contributor's `BRACKET_TIME_RX` + `cleanSpeaker`
+  survive verbatim as the `telegram-bracket` built-in + `DEFAULT_SPEAKER_CLEAN`
+  export. Co-Authored-By preserved.
+
+### Deferred to v0.41.14.0+ (filed in TODOS.md)
+
+- 9-site progressive-batch retrofit (reindex.ts, reindex-multimodal.ts,
+  reindex-code.ts, post-upgrade-reembed.ts, book-mirror.ts,
+  brainstorm/orchestrator.ts, eval-suspected-contradictions.ts,
+  eval-contradictions/cost-prompt.ts, contextual-reindex-per-chunk.ts).
+  The primitive ships with one proven consumer (parser cathedral);
+  retrofits land as a structured follow-up wave.
+- Worker-based regex isolate-and-kill for arbitrary user patterns.
+- Per-pattern speaker-alias normalization (LongMemEval-style).
+- Cross-modal scoring of LLM-fallback output (catch hallucinations
+  beyond the adversarial fixture set).
+- Per-source pattern overrides
+  (`cycle.conversation_facts_backfill.source_overrides.<id>.patterns`).
+- Real-corpus-redacted fixtures (5-10 production pages scrubbed via
+  one-shot script; production-recovery signal vs synthetic-only).
+
+## To take advantage of v0.41.16.0
+
+`gbrain upgrade` should do this automatically. If it didn't, or if
+`gbrain doctor` warns about a partial migration:
+
+1. **Run the orchestrator manually:**
+   ```bash
+   gbrain apply-migrations --yes
+   ```
+2. **Trigger a dream cycle to extract facts from previously-stuck conversation pages:**
+   ```bash
+   gbrain dream
+   ```
+3. **Verify the outcome:**
+   ```bash
+   gbrain doctor                                          # check conversation_format_coverage
+   gbrain conversation-parser list-builtins               # see the 12 shipped patterns
+   gbrain conversation-parser scan <a-conversation-slug>  # confirm a specific page parses
+   ```
+4. **(Optional) Opt IN to LLM polish + fallback for long-tail formats:**
+   ```bash
+   gbrain config set conversation_parser.llm_polish_enabled true
+   gbrain config set conversation_parser.llm_fallback_enabled true
+   ```
+   This sends chat content to Anthropic. Cost ~$0.0002 per polished page,
+   ~$0.0005 per fallback call. Bounded by your brain-wide `BudgetTracker` cap.
+5. **If any step fails or the numbers look wrong,** please file an issue:
+   https://github.com/garrytan/gbrain/issues with:
+   - output of `gbrain doctor`
+   - output of `gbrain conversation-parser scan <slug>` for a stuck page
+   - which step broke
+
+   This feedback loop is how the gbrain maintainers find fragile upgrade paths. Thank you.
+## [0.41.15.0] - 2026-05-26
+
+**Your hourly cron can stop killing every sync mid-flight. Each source now
+gets its own clock, partial progress is real, and stale locks self-heal
+between runs.**
+
+Before this release, when `gbrain sync --all` hit the cron wall-clock, the
+whole process died — including sources it had not even started on. The
+next cron found stale locks left behind by the killed sync and refused to
+acquire them, so those sources fell further behind. On a 4-source brain
+where one source naturally takes a long time to sync, 8 of every 12
+hourly runs would time out. The slowest sources went 50+ hours without a
+fresh sync. Recovery meant running a `--break-lock` command per source by
+hand.
+
+v0.41.15.0 closes the cascade with two new flags and a documented cron
+pattern that actually works.
+
+### How to turn it on
+
+After upgrading, switch your sync cron to a per-source loop with shell
+`timeout(1)` doing the OS-level kill and gbrain doing the graceful
+self-termination half-a-minute before that:
+
+```bash
+# Self-healing, per-source. --max-age 1800 only steals locks whose
+# holder has stopped refreshing for >30 min (a real wedge signal).
+gbrain sync --break-lock --all --max-age 1800
+for src in $(gbrain sources list --json | jq -r '.[].id'); do
+  timeout 600 gbrain sync --source "$src" --timeout 540 || true
+done
+```
+
+The `--timeout 540` gives gbrain 9 minutes to graceful-exit; the shell
+`timeout 600` hard-kills if gbrain ignores it. `|| true` lets one slow
+source's exit not break the loop for siblings.
+
+### What you'd see in a concrete example
+
+If you have a brain that looked like the table on the left before, it
+looks like the right after the upgrade and the new cron:
+
+| Brain shape | Before v0.41.15.0 | After v0.41.15.0 |
+|---|---|---|
+| `default` (~50 files diff/hour) | Synced in ~5 min | Synced in ~5 min |
+| `straylight-brain` (~200 files) | Often killed mid-import; 50+ hrs stale | Imports in waves; partial each time, fully current by wave 3 |
+| `zion-brain` (~500 files) | Killed before reached on slow waves | Each cron gets its own per-source budget |
+| `media-corpus` (250K chunks) | Cron stops here every time | Wedged-lock recovery via `--max-age`; no manual `--break-lock` |
+| Cron success rate | ~33% (4/12 runs/24h) | Expected ~95%+ |
+
+When `--timeout` fires mid-import, `gbrain sync` exits 0 with status
+`partial` and `last_commit` UNCHANGED. The next sync re-walks the same
+diff; `content_hash` skips already-imported files at ~10ms each. Nothing
+re-embeds for free.
+
+### What's safe to know about
+
+Three things are deliberately out of scope and worth knowing:
+
+1. **`--timeout` only protects pull + delete + rename + import.** Extract
+   and embed phases run to completion after the import bookmark write.
+   This is honest-by-design: the bookmark advances when imports complete,
+   so abort-checks past that point would silently keep the bookmark
+   moving while abandoning work. Extract is cheap CPU; embed is gated to
+   ≤100 pages with its own network retry.
+2. **First 30 min after upgrade, `--max-age` cannot identify
+   wedged pre-upgrade holders.** Migration v98 adds a
+   `last_refreshed_at` column and backfills every existing lock row to
+   `NOW()` so healthy pre-upgrade syncs (still on the old binary) get a
+   30-min protection window. After that window all pre-upgrade syncs
+   have either completed (lock released) or genuinely wedged
+   (`--max-age` does the right thing). If you hit a wedged holder in
+   the rollout window, use `--force-break-lock` instead.
+3. **Full-sync triggers** (first sync, `--full` flag, missing-anchor
+   recovery, chunker-version rewalk) don't respect `--timeout` yet.
+   Filed for v0.42+. If you hit one of those triggers, run it manually
+   with an extended wall-clock.
+
+### Credit
+
+This release was driven by the RFC in
+[PR #1472](https://github.com/garrytan/gbrain/pull/1472) from
+[@garrytan-agents](https://github.com/garrytan-agents), which surfaced
+the production cron-failure data that motivated the fix. The shipped
+plan reduced scope from the RFC's 4 surfaces to 2 surfaces + a
+documented shell-level cron pattern after iteration with codex (3
+review passes) on cascade-resilience and lock-stealing invariants.
+
+### Itemized changes
+
+#### Added
+
+- `gbrain sync [--source <id>] [--all] --timeout <seconds>` — graceful
+  self-termination flag. `--source X --timeout N` runs a single source
+  with a per-source N-second budget. `--all --timeout N` gives each
+  source its OWN N-second AbortController inside `runOne`. Returns
+  `SyncResult { status: 'partial', filesImported, reason: 'timeout' |
+  'pull_timeout' }` and exits 0 so cron doesn't classify the run as
+  failure.
+- `gbrain sync --break-lock --all` — drops the previous refusal to
+  combine `--break-lock` with `--all`. Loops every registered source's
+  lock, prints per-source verdict (`broken | refused | absent`), and
+  exits 0 iff every source reaches a clean state.
+- `gbrain sync --break-lock --max-age <seconds>` — new modifier on the
+  existing safe-path. Breaks a lock whose `last_refreshed_at` is older
+  than the threshold (NOT `acquired_at` — see migration v98). Healthy
+  long-running holders that are actively refreshing their TTL are SAFE
+  by construction because their last refresh is always within the
+  refresh interval (~5 min for default 30-min TTL). Only wedged-but-
+  alive holders (JS interval stopped firing) get correctly identified
+  as stale.
+- `SyncResult.status: 'partial'` — additive variant carrying
+  `filesImported` and `reason: 'timeout' | 'pull_timeout'`. Existing
+  status values (`up_to_date | synced | first_sync | dry_run |
+  blocked_by_failures`) stay valid.
+
+#### Changed
+
+- `tryAcquireDbLock` writes `last_refreshed_at = NOW()` on initial
+  INSERT and on takeover. `withRefreshingLock`'s refresh callback bumps
+  both `ttl_expires_at` AND `last_refreshed_at` on every tick.
+  `inspectLock` widens `LockSnapshot` with `last_refreshed_at: Date |
+  null` and `ms_since_last_refresh: number | null`.
+- `printSyncResult` gains a `case 'partial':` arm that prints the
+  imported / remaining count and reason; tells the operator to re-run
+  to continue.
+- `manageGitignore` and the auto-embed-backfill enqueue inside `runOne`
+  now exclude `'partial'` from their gates (matches
+  `blocked_by_failures` posture — defer downstream work to the next
+  clean sync).
+- Pull-phase catch block at `src/commands/sync.ts:825-833` extends to
+  inspect `error.cause.code === 'ETIMEDOUT'` or `error.cause.signal ===
+  'SIGTERM'` (`pullRepo` wraps `execFileSync` errors in
+  `GitOperationError` so the timeout signature lives on `.cause`).
+  Non-timeout pull failures keep the existing warn-and-continue.
+
+#### Schema
+
+- Migration v98 (`gbrain_cycle_locks_last_refreshed_at`) — adds nullable
+  `last_refreshed_at TIMESTAMPTZ` and backfills `= NOW()` for every
+  existing row (the rollout-safety policy described above). PGLite +
+  Postgres parity. Idempotent — second run finds the column present and
+  the backfill predicate matches nothing.
+- `src/core/pglite-schema.ts`, `src/schema.sql`, and
+  `src/core/schema-embedded.ts` (regenerated via `bun run build:schema`)
+  all carry the new column so fresh installs initialize correctly
+  without depending on the migration runner.
+
+#### New helper
+
+- `deleteLockRowIfStale(engine, lockId, holderPid, maxAgeSeconds)` in
+  `src/core/db-lock.ts` — single atomic SQL DELETE keyed on `(id,
+  holder_pid, last_refreshed_at < NOW() - $N * INTERVAL '1 second')`
+  with `RETURNING id, last_refreshed_at`. No TOCTOU between inspect +
+  delete; the WHERE clause is the gate. The `$N * INTERVAL '1 second'`
+  cast is the correct shape on both Postgres and PGLite (`$N::interval`
+  does not cast integer→interval).
+
+#### For contributors
+
+- New `parseDurationSeconds(s, flagName)` helper in
+  `src/core/sync-concurrency.ts` accepts bare integers, `s`/`m`/`h`
+  suffixes (`60`, `60s`, `10m`, `1h`); rejects 0, negatives, decimals,
+  unrecognized units; names the failing flag in the error message.
+  Used by `--timeout` and `--max-age` parsing.
+- New `tests/heavy/sync_timeout_rescue.sh` reproduces the cron-cascade
+  scenario at small scale (4 in-memory sources × 200 pages × tight
+  `--timeout` × 3 waves) and asserts every source converges within 3
+  waves. Wire into your nightly heavy-test job if you maintain a
+  fork.
+- `SyncResult.status` widened from 5 to 6 members. Library consumers
+  outside this repo that exhaustively switch on `.status` will see a
+  TypeScript exhaustiveness check fail until they add a `'partial'`
+  arm.
+
 ## [0.41.14.0] - 2026-05-25
 
 **Your gbrain skills can declare their own routing triggers in their

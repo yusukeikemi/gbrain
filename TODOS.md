@@ -46,6 +46,138 @@
   runAllOnboardChecks; doctor-remote.ts would surface them on the thin-client
   dashboard for operators who only hit the brain via MCP.
 
+## v0.41.16.0 conversation parser + progressive-batch follow-ups (v0.41.14.0+)
+
+The v0.41.16.0 cathedral shipped the parser primitive + progressive-batch
+primitive + ONE proven consumer (extract-conversation-facts). Per D2 (codex
+outside voice acknowledged + user accepted the trade), the wider 9-site
+retrofit + 5 architectural follow-ups land as structured waves to keep each
+PR bisectable.
+
+- [ ] **v0.41.14.0: 9-site progressive-batch retrofit (one commit per site
+  for bisect).** The primitive at `src/core/progressive-batch/` shipped
+  with ONE consumer (extract-conversation-facts). Twelve other batch
+  sites still reinvent their own ramp+cost-prompt patterns; rule of
+  three is comfortably past. Retrofit each onto the primitive in
+  sequence, one commit per site for bisect, behavior parity tested
+  before/after migration:
+  - `src/commands/reindex.ts` (markdown chunker bump) — existing 10s
+    Ctrl-C grace + `GBRAIN_NO_REEMBED=1` env map to
+    `interactiveAbortMs` + `GBRAIN_PROGRESSIVE_BATCH_DISABLED`.
+  - `src/commands/reindex-multimodal.ts` (Phase 3 unified column) —
+    360min lock survives orthogonal; cost prompt becomes stage report.
+  - `src/commands/reindex-code.ts` — sites without existing ramps
+    keep jump-to-full default per D21; ramp is opt-in.
+  - `src/core/post-upgrade-reembed.ts` — TTY auto-proceed maps directly
+    to `GBRAIN_PROGRESSIVE_BATCH_AUTO`.
+  - `src/commands/book-mirror.ts` — cost-estimate becomes stage 0.
+  - `src/core/brainstorm/orchestrator.ts` — already wraps in
+    `withBudgetTracker`; primitive accepts the active tracker.
+  - `src/commands/eval-suspected-contradictions.ts` — sampling probe
+    becomes stage 0; full run becomes stages 1-4.
+  - `src/core/eval-contradictions/cost-prompt.ts` — DELETE entirely;
+    callers route through the primitive's Policy.maxCostUsd.
+  - `src/core/minions/handlers/contextual-reindex-per-chunk.ts` —
+    `GBRAIN_PROGRESSIVE_BATCH_AUTO` defaults true for workers.
+  Priority: P2. Rationale: future batch features inherit the discipline
+  for free; the 12 existing sites stay bespoke until done.
+
+- [ ] **v0.42+: per-source pattern overrides.** New config key
+  `cycle.conversation_facts_backfill.source_overrides.<id>.patterns`
+  (JSON array of `simple_pattern` specs). Pros: brain with both
+  Telegram AND Discord sources can declare per-source pattern priority.
+  Cons: another config key to validate; per-source pattern indexing
+  needs runtime per-page lookup. Context: v1 keeps patterns
+  brain-global to ship faster. Priority: P3.
+
+- [ ] **v0.42+: Worker-based regex isolate-and-kill for arbitrary user
+  patterns.** Compile user-supplied regex inside a Node Worker and kill
+  the Worker on timeout. Why: Node has no native `RegExp.abort`; v0.41.13
+  Promise.race-based ReDoS sniff is fake (the regex engine can't be
+  preempted once running). v0.41.13 ships NO arbitrary user regex
+  surface to avoid the security theater; user patterns wait for this.
+  Alternative: safe-regex npm (synchronous static analysis, catches
+  the canonical /^(a+)+$/ class). Cons: per-pattern Worker startup
+  cost; complexity. Context: today's `simple_pattern` structured spec
+  (also v0.42+) compiles to known-safe regex shapes without the
+  worker dance. Priority: P3.
+
+- [ ] **v0.42+: per-pattern speaker-alias normalization.** LongMemEval-
+  style per-page alias map collapsing `"Alice"` + `"Alice Smith"` +
+  `"alice"` to one canonical slug. See `src/eval/longmemeval/extract.ts`
+  `AliasMap` shape. Pros: cleaner downstream fact extraction. Cons:
+  state per-page (currently stateless orchestrator). Context: today
+  downstream `resolveEntitySlug` handles this via the entities table
+  (good enough but cleaner upstream). Priority: P3.
+
+- [ ] **v0.42+: cross-modal scoring of LLM-fallback output.** Feed
+  fallback-parsed messages to a judge model and score correctness.
+  Why: catches hallucinated parses (LLM "inventing" speakers/timestamps
+  on adversarial input). Pros: closes a quality gap. Cons: cost;
+  needs budget policy + judge model selection. Context: v0.41.16.0
+  catches hallucination only via the adversarial fixture set in the
+  nightly probe (5 fixtures). Real adversarial drift = more
+  fixtures + judge scoring. Priority: P2.
+
+- [ ] **v0.42+: mega-regex compilation fallback.** Combine 12+ built-ins
+  into one alternation regex if D11 quick_reject benchmarks disappoint.
+  Pros: faster on dense conversations (single pass per line). Cons:
+  debugging which alternative matched is nightmarish; one bad anchor
+  corrupts all. Context: D11 quick_reject is expected to deliver ~10×
+  speedup; revisit only if real corpus measurements show >5ms parse
+  time per page. Priority: P3.
+
+- [ ] **v0.42+: real-corpus-redacted fixture set.** Add
+  `test/fixtures/conversation-formats/real-corpus-redacted/` derived
+  from 5-10 real production Telegram pages with: real names →
+  placeholder names (alice-example, charlie-example, fund-a) via a
+  one-shot scrubber script, real timestamps preserved, real message
+  bodies preserved STRUCTURALLY (length + line-break shape) but
+  content replaced with lorem-ipsum-style synthetic prose. Privacy
+  guard extended. Why: synthetic 8-12 message fixtures prove regex
+  syntax, not production recovery of 134 real Telegram-shaped pages.
+  Real edge cases (long pastes, code blocks, replies, day-separators)
+  only surface in real corpora. Adds ~30min scrub step + privacy
+  guard maintenance. Priority: P2.
+## v0.41.15.0 sync-reliability follow-ups (v0.42+)
+
+- [ ] **v0.42+: subprocess fan-out for `sync --all` (`--independent` mode
+  revisit).** v0.41.15.0 deliberately rejected `--independent` (Minion
+  job-queue fan-out) in plan review and shipped the shell-level
+  `timeout(1)` per-source loop instead — that gives real OS process
+  isolation with zero new gbrain code. Revisit if shell `timeout` proves
+  insufficient for any operator workflow (e.g. someone wants structured
+  per-source JSON output that `jq | xargs` can't easily produce). If we
+  revisit, pivot to subprocess-per-source (gbrain CLI spawning gbrain
+  CLI) rather than reuse the Minion handler, because codex's pass-2
+  review caught that Minion is in-process worker pool — not OS-process-
+  per-source — and `waitForCompletion` throws on timeout but doesn't
+  cancel the underlying job (leaving a hot lock for the next cron).
+  Priority: P3 (operator-comfort improvement; no correctness gap).
+
+- [ ] **v0.42+: full-sync `--timeout` coverage via AbortSignal in
+  `runImport`.** v0.41.15.0's `--timeout` covers the incremental sync
+  path (pull + delete + rename + import). It does NOT cover full-sync
+  triggers: first sync, `--full` flag, missing-anchor recovery,
+  chunker-version rewalk. `performFullSync` delegates to `runImport` as
+  one large operation that doesn't accept an AbortSignal today.
+  Operators hitting full-sync today already need extended wall-clocks
+  (the CHANGELOG documents the workaround); a v0.42+ wave would thread
+  `AbortSignal` through `runImport` so every sync path has the timeout
+  safety net. Touches 4-5 more files (`src/commands/import.ts`,
+  `src/core/import-file.ts`, batch loops). Priority: P3 unless a user
+  reports cron-killing full-sync triggers in production.
+
+- [ ] **v0.42+: `runFactsBackstop(mode:'queue')` in-process microtask
+  queue can keep the CLI alive briefly after sync returns.** Documented
+  as a known caveat in the v0.41.15.0 CHANGELOG. The queue uses an
+  in-process microtask drain (not Minions) to fire-and-forget LLM
+  enrichment for synced pages. After `gbrain sync` returns, the CLI
+  process may stay alive for a few seconds while queued work drains.
+  Bounded by per-call timeouts inside the LLM client but operator-
+  visible. A v0.42+ fix could either (a) route through Minions (more
+  durable; needs job-queue dependency for plain sync), or (b) drop the
+  in-process queue on sync exit. Priority: P3.
 ## v0.41.14.0 #1451 drift-fix follow-ups (v0.42+)
 
 - [ ] **v0.42+: refactor `runRoutingEval` to take `ResolverEntry[]` directly** instead of `resolverContent: string`. Cleaner shape than synthesizing markdown then re-parsing it. Cascades through 9+ test files that depend on the string-content API. Defer until the next big refactor of the routing-eval module so the test-file churn lands with that wave.

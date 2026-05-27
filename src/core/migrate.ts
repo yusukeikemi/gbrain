@@ -4522,11 +4522,6 @@ export const MIGRATIONS: Migration[] = [
     // The Postgres path uses CREATE INDEX CONCURRENTLY (with `transaction:
     // false` so postgres.js doesn't wrap an implicit BEGIN) and pre-drops
     // any invalid remnant from a prior failed CONCURRENTLY attempt.
-    //
-    // Slot history: originally v95, bumped to v96 after master's #1442
-    // landed (links CHECK widening), then bumped to v97 after master's
-    // v0.41.11.0 (#1446) claimed v96 for the facts conversation index.
-    // Migration content unchanged across renumbers.
     sql: '',
     transaction: false,
     handler: async (engine) => {
@@ -4561,30 +4556,74 @@ export const MIGRATIONS: Migration[] = [
   },
   {
     version: 98,
+    name: 'gbrain_cycle_locks_last_refreshed_at',
+    // v0.41.15.0 (D-V3-4 + D-V4-1) — add last_refreshed_at column for
+    // `gbrain sync --break-lock --max-age <s>` to correctly identify
+    // wedged-but-alive lock holders without stealing healthy long-running
+    // holders that are actively refreshing.
+    //
+    // BACKFILL POLICY: last_refreshed_at = NOW() (NOT acquired_at).
+    //
+    // Why NOW(): during the upgrade window there can be ACTIVE sync
+    // processes still running the OLD binary. Their refresh() only bumps
+    // ttl_expires_at (the old code didn't know about last_refreshed_at).
+    // If we backfilled = acquired_at (e.g. 25 min ago), then `gbrain sync
+    // --break-lock --all --max-age 1800` after the migration would
+    // immediately delete the lock of a HEALTHY 25-min-old holder that's
+    // still actively writing.
+    sql: `
+      ALTER TABLE gbrain_cycle_locks ADD COLUMN IF NOT EXISTS last_refreshed_at TIMESTAMPTZ;
+      UPDATE gbrain_cycle_locks SET last_refreshed_at = NOW() WHERE last_refreshed_at IS NULL;
+    `,
+  },
+  {
+    version: 99,
+    name: 'conversation_parser_llm_cache_table',
+    // v0.41.16.0 — content-hash-keyed cache for the conversation parser's
+    // LLM polish + fallback calls. See src/schema.sql for design notes.
+    sql: `
+      CREATE TABLE IF NOT EXISTS conversation_parser_llm_cache (
+        content_sha256 TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        call_shape TEXT NOT NULL CHECK (call_shape IN ('polish', 'fallback')),
+        value_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (content_sha256, model_id, call_shape)
+      );
+      CREATE INDEX IF NOT EXISTS idx_conversation_parser_llm_cache_created
+        ON conversation_parser_llm_cache (created_at);
+    `,
+    sqlFor: {
+      pglite: `
+        CREATE TABLE IF NOT EXISTS conversation_parser_llm_cache (
+          content_sha256 TEXT NOT NULL,
+          model_id TEXT NOT NULL,
+          call_shape TEXT NOT NULL CHECK (call_shape IN ('polish', 'fallback')),
+          value_json JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (content_sha256, model_id, call_shape)
+        );
+        CREATE INDEX IF NOT EXISTS idx_conversation_parser_llm_cache_created
+          ON conversation_parser_llm_cache (created_at);
+      `,
+    },
+  },
+  {
+    version: 101,
     name: 'links_link_kind_column',
     // v0.42.0.0 (gbrain onboard wave, A10 + codex finding #12):
-    // NER link extraction was originally going to add a new
-    // link_source='ner' provenance, but that would have forced every
-    // existing `link_source='mentions'` query (backlink-count filter,
-    // orphan-ratio computation, doctor checks) to update or metrics
-    // would drift across the cutover. Instead: keep link_source='mentions'
-    // for the storage layer AND add a nullable link_kind column for
-    // callers that want to distinguish "plain body mention" from
-    // "verb-pattern-derived typed link" (CEO of X → works_at).
+    // NER link extraction adds a nullable link_kind column instead of
+    // splitting link_source='ner' as a new provenance — keeps
+    // backlink-count + orphan-ratio queries stable while letting
+    // NER-aware callers distinguish typed links.
     //
-    // Three kinds enumerated, all optional:
-    //   'plain'     — explicit body-text mention, no verb pattern matched
-    //   'typed_ner' — verb-pattern adjacent to gazetteer entity
-    //   NULL        — legacy / unknown / pre-v98 row (semantically 'plain')
+    // Three kinds: 'plain' | 'typed_ner' | NULL (legacy, semantically plain).
+    // NOT in the links UNIQUE constraint so a plain-mention row coexists
+    // with future typed_ner promotions via explicit ON CONFLICT DO UPDATE.
     //
-    // link_kind is deliberately NOT in the links UNIQUE constraint at
-    // schema.sql:371. If --by-mention runs first (link_kind=NULL) and
-    // --ner runs second on the same (from, to, type, source, origin)
-    // tuple, the conflict resolves DO NOTHING and the NULL stays.
-    // Code that wants to PROMOTE the kind on conflict uses an explicit
-    // ON CONFLICT DO UPDATE SET link_kind = EXCLUDED.link_kind in the
-    // NER extraction handler. For now (this migration), just land the
-    // nullable column + CHECK constraint.
+    // Slot history: originally v98, bumped to v101 after master merge
+    // claimed v98 (lock-refresh) + v99 (conversation parser cache) +
+    // v100 (per master's own merges).
     sql: `
       ALTER TABLE links ADD COLUMN IF NOT EXISTS link_kind TEXT
         CHECK (link_kind IS NULL OR link_kind IN ('plain', 'typed_ner'));
@@ -4597,29 +4636,15 @@ export const MIGRATIONS: Migration[] = [
     },
   },
   {
-    version: 99,
+    version: 102,
     name: 'timeline_entries_source_in_dedup',
     // v0.42.0.0 (gbrain onboard wave, A11 + codex finding #11):
-    // Original timeline dedup at schema.sql:423 is
-    //   CREATE UNIQUE INDEX idx_timeline_dedup
-    //     ON timeline_entries(page_id, date, summary)
-    // — the `source` column (TEXT NOT NULL DEFAULT '') is NOT in the
-    // dedup key. The new --from-meetings extraction writes timeline
-    // entries with source='extract-timeline-from-meetings:<meeting-slug>',
-    // and codex caught that two meetings with the same date+summary on
-    // the same entity page would silently DO NOTHING — the second
-    // meeting's provenance is lost.
+    // Widen idx_timeline_dedup from (page_id, date, summary) to
+    // (page_id, date, summary, source) so --from-meetings provenance
+    // survives. Legacy rows have source='' (schema default), so legacy
+    // dedup behavior is preserved.
     //
-    // Fix: widen the unique index to (page_id, date, summary, source).
-    // Legacy rows have source='' (the schema default), so legacy
-    // dedup behavior is preserved for old data; new rows with non-empty
-    // source are distinguished by meeting.
-    //
-    // Drop the old unique index, create the new one. Both engines run
-    // the same SQL. CONCURRENTLY only matters for Postgres on tables
-    // with concurrent writers; timeline_entries is small (~hundreds of
-    // entries per page max), so the brief lock during constraint swap
-    // is acceptable.
+    // Slot history: originally v99, bumped to v102 after master merge.
     sql: `
       DROP INDEX IF EXISTS idx_timeline_dedup;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_dedup
@@ -4634,40 +4659,22 @@ export const MIGRATIONS: Migration[] = [
     },
   },
   {
-    version: 100,
+    version: 103,
     name: 'migration_impact_log_and_priority_recent_idx',
-    // v0.42.0.0 (gbrain onboard wave, A6 + A25 + A13 + codex findings #10 + #9):
+    // v0.42.0.0 (gbrain onboard wave, A6 + A25 + A13 + codex #9 + #10):
+    // (1) migration_impact_log table — onboard --history backbone with
+    //     attribution columns (job_id, source_id, brain_id, started_at,
+    //     idempotency_key) so concurrent runs don't misattribute deltas.
+    // (2) content_chunks_stale_idx partial index — supports
+    //     `embed --stale` + `--priority recent` (outer ORDER BY
+    //     p.updated_at DESC uses existing idx_pages_updated_at_desc).
     //
-    // Two structural additions bundled because they're both consumed by
-    // the onboard remediation pipeline and ship together:
-    //
-    // 1. migration_impact_log table — every onboard-driven extraction
-    //    captures before/after metric stats so gbrain onboard --history
-    //    can show "you reduced orphans 47%". Plain NUMERIC columns; delta
-    //    computed at read time (NOT a stored GENERATED column per
-    //    eng-review D2 — zero PGLite parity risk). Attribution columns
-    //    (job_id, source_id, brain_id, started_at, idempotency_key) per
-    //    codex finding #10 so concurrent onboard/autopilot/manual runs
-    //    can't misattribute deltas to the wrong migration.
-    //
-    // 2. content_chunks_stale_idx — partial index supporting
-    //    `gbrain embed --stale` AND `--priority recent`. Composite key
-    //    (page_id, chunk_index) WHERE embedding IS NULL. content_chunks
-    //    has no updated_at column (chunks are re-INSERTed when their page
-    //    changes, not UPDATEd), so the "recent-first" ORDER BY happens at
-    //    the JOIN site: outer ORDER BY p.updated_at DESC uses the existing
-    //    `idx_pages_updated_at_desc`; inner partial uses this new index.
-    //    Partial WHERE embedding IS NULL keeps the index small even on
-    //    fully-embedded brains.
-    //
-    // Same engine-aware split as migration 96/97: Postgres uses CREATE
-    // INDEX CONCURRENTLY (avoid SHARE lock on the large content_chunks
-    // table on big brains) + pre-drops invalid remnant. PGLite uses
-    // plain CREATE INDEX.
+    // Slot history: originally v100, bumped to v103 after master merge.
+    // Engine-aware split: Postgres uses CREATE INDEX CONCURRENTLY +
+    // invalid-remnant pre-drop; PGLite uses plain CREATE INDEX.
     transaction: false,
     sql: '',
     handler: async (engine) => {
-      // Step 1: migration_impact_log table — same on both engines.
       const createTableSql = `
         CREATE TABLE IF NOT EXISTS migration_impact_log (
           id BIGSERIAL PRIMARY KEY,
@@ -4685,22 +4692,21 @@ export const MIGRATIONS: Migration[] = [
           details JSONB DEFAULT '{}'::jsonb
         );
       `;
-      await engine.runMigration(100, createTableSql);
+      await engine.runMigration(103, createTableSql);
       await engine.runMigration(
-        100,
+        103,
         `CREATE INDEX IF NOT EXISTS migration_impact_log_remediation_idx
            ON migration_impact_log(remediation_id, applied_at DESC);`
       );
       await engine.runMigration(
-        100,
+        103,
         `CREATE INDEX IF NOT EXISTS migration_impact_log_attribution_idx
            ON migration_impact_log(job_id, source_id) WHERE job_id IS NOT NULL;`
       );
 
-      // Step 2: content_chunks_stale_idx — engine-split.
       if (engine.kind === 'postgres') {
         await engine.runMigration(
-          100,
+          103,
           `DO $$ BEGIN
              IF EXISTS (
                SELECT 1 FROM pg_index i
@@ -4712,14 +4718,14 @@ export const MIGRATIONS: Migration[] = [
            END $$;`
         );
         await engine.runMigration(
-          100,
+          103,
           `CREATE INDEX CONCURRENTLY IF NOT EXISTS content_chunks_stale_idx
              ON content_chunks (page_id, chunk_index)
              WHERE embedding IS NULL;`
         );
       } else {
         await engine.runMigration(
-          100,
+          103,
           `CREATE INDEX IF NOT EXISTS content_chunks_stale_idx
              ON content_chunks (page_id, chunk_index)
              WHERE embedding IS NULL;`
