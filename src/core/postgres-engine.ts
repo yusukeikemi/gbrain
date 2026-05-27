@@ -4373,7 +4373,7 @@ export class PostgresEngine implements BrainEngine {
       }
       return (rows[0].canonical_slug as string) ?? slug;
     } catch (e) {
-      // Pre-v104 brain: slug_aliases table doesn't exist yet. Defense-in-depth
+      // Pre-v105 brain: slug_aliases table doesn't exist yet. Defense-in-depth
       // per the engine interface contract.
       if (isUndefinedTableError(e)) return slug;
       throw e;

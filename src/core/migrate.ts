@@ -4735,8 +4735,53 @@ export const MIGRATIONS: Migration[] = [
   },
   {
     version: 104,
+    name: 'pages_atom_source_hash_idx',
+    // Partial expression index on frontmatter->>'source_hash' for atom
+    // rows. Powers `atomsExistingForHashes` in extract_atoms
+    // (src/core/cycle/extract-atoms.ts), which replaces the prior
+    // per-hash loop that did 7K SQL round trips per cycle on a brain
+    // with ~7K conversation transcripts.
+    //
+    // Mirrors v97 pattern: Postgres uses CREATE INDEX CONCURRENTLY
+    // (no SHARE-lock blocking concurrent writes) and pre-drops any
+    // invalid remnant from a prior failed CONCURRENTLY attempt via
+    // pg_index.indisvalid. PGLite uses plain CREATE INDEX.
+    transaction: false,
+    sql: '',
+    handler: async (engine) => {
+      if (engine.kind === 'postgres') {
+        await engine.runMigration(
+          104,
+          `DO $$ BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_index i
+               JOIN pg_class c ON c.oid = i.indexrelid
+               WHERE c.relname = 'pages_atom_source_hash_idx' AND NOT i.indisvalid
+             ) THEN
+               EXECUTE 'DROP INDEX CONCURRENTLY IF EXISTS pages_atom_source_hash_idx';
+             END IF;
+           END $$;`
+        );
+        await engine.runMigration(
+          104,
+          `CREATE INDEX CONCURRENTLY IF NOT EXISTS pages_atom_source_hash_idx
+             ON pages ((frontmatter->>'source_hash'))
+             WHERE type = 'atom' AND deleted_at IS NULL;`
+        );
+      } else {
+        await engine.runMigration(
+          104,
+          `CREATE INDEX IF NOT EXISTS pages_atom_source_hash_idx
+             ON pages ((frontmatter->>'source_hash'))
+             WHERE type = 'atom' AND deleted_at IS NULL;`
+        );
+      }
+    },
+  },
+  {
+    version: 105,
     name: 'slug_aliases',
-    // v0.42 type-unification wave (T1, plan D1+D11+D17).
+    // v0.41.22 type-unification wave (T1, plan D1+D11+D17).
     // Backing table for the concept-redirect → alias-table migration: 5.5K
     // concept-redirect pages in the reference production brain become rows
     // here so wikilinks like `[[old-redirect-slug]]` resolve to the canonical
@@ -4745,9 +4790,8 @@ export const MIGRATIONS: Migration[] = [
     // doctor check must use source-scoped JOIN to avoid cross-source false
     // positives).
     //
-    // Pre-rebase plan claimed v98; bumped to v104 after master merge consumed
-    // v98-v103 via the v0.41.18.0 onboard wave (link_kind, timeline_dedup,
-    // migration_impact_log).
+    // Originally claimed v104; bumped to v105 after master merge from
+    // v0.41.21.0 wave took v104 for pages_atom_source_hash_idx.
     //
     // CHECK no-self-reference + UNIQUE (source_id, alias_slug). PGLite uses
     // plain CREATE INDEX (no CONCURRENTLY); fresh installs also create the
@@ -4755,7 +4799,7 @@ export const MIGRATIONS: Migration[] = [
     sql: '',
     handler: async (engine) => {
       await engine.runMigration(
-        104,
+        105,
         `CREATE TABLE IF NOT EXISTS slug_aliases (
           id             BIGSERIAL PRIMARY KEY,
           source_id      TEXT NOT NULL,
@@ -4768,7 +4812,7 @@ export const MIGRATIONS: Migration[] = [
         );`
       );
       await engine.runMigration(
-        104,
+        105,
         `CREATE INDEX IF NOT EXISTS slug_aliases_canonical_idx
            ON slug_aliases (source_id, canonical_slug);`
       );

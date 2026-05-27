@@ -241,6 +241,6 @@ add `GBRAIN_AUDIT_FULL=1` (v0.43+ TODO; not yet wired).
 - Onboard check: `src/core/onboard/checks.ts:checkPackUpgradeAvailable`
 - Render allowlist: `src/core/onboard/render.ts:MANUAL_ONLY_PROTECTED_JOBS`
 - Handler: `src/core/schema-pack/unify-types-handler.ts`
-- Migration: `src/core/migrate.ts:104` (slug_aliases table)
+- Migration: `src/core/migrate.ts:105` (slug_aliases table)
 - Type taxonomy doc: `docs/architecture/type-taxonomy.md`
 - Skill: `skills/schema-unify/SKILL.md`

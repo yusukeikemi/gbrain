@@ -521,7 +521,7 @@ export async function checkTypeProliferation(
  * `cleanup-dangling-aliases` as an auto_apply handler once detection is
  * confirmed clean in production.
  *
- * Defensive: pre-v104 brains don't have slug_aliases yet — returns ok
+ * Defensive: pre-v105 brains don't have slug_aliases yet — returns ok
  * via the `isUndefinedTableError` fallthrough inherent in safeCount's
  * catch-all (returns 0 on any SQL error).
  */

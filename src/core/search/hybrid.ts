@@ -374,7 +374,7 @@ export async function runPostFusionStages(
   // Fires when the result's slug is a canonical_slug in slug_aliases —
   // the page is the authoritative version of one or more aliases. Signal
   // intent: "user explicitly disambiguated this as canonical." Defense-
-  // in-depth: pre-v104 brains don't have slug_aliases table; the lookup
+  // in-depth: pre-v105 brains don't have slug_aliases table; the lookup
   // throws isUndefinedTableError and the stage no-ops.
   try {
     await applyAliasResolvedBoost(results, engine);
