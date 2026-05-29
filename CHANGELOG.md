@@ -2,6 +2,137 @@
 
 All notable changes to GBrain will be documented in this file.
 
+## [0.41.29.0] - 2026-05-29
+
+**Your meeting transcripts that look like `**Garry Tan:** ...` now actually
+parse — the kind Circleback, Granola, and Zoom export with no timestamp on
+each line. And `gbrain doctor --source <id>` finally scopes its orphan check
+to that one source instead of your whole brain.**
+
+Two fixes in one release.
+
+**The transcript fix.** gbrain knows 13 chat formats, and every single one
+needed a per-line timestamp to recognize a speaker. Modern meeting tools
+don't put a time on every line — they emit plain `**Speaker Name:** what
+they said`. With no time anchor, gbrain matched nothing: a real production
+brain had 104 conversation pages plus 3,423 other eligible pages that
+silently parsed to zero messages and extracted zero facts. The 14th built-in
+pattern, `bold-name-no-time`, handles that shape. Each message anchors at
+00:00:00 of the page's date (no fake wall-clock times are invented; line
+order preserves the sequence). Nothing you do — it just works the next time
+your cycle runs.
+
+How to check it's recognized:
+
+```
+gbrain conversation-parser list-builtins   # bold-name-no-time is now listed
+gbrain conversation-parser scan <slug>     # see how one page parses
+```
+
+One thing we were careful about: that `**Label:** text` shape is also a
+common way to write notes (`**Owner:** Alice`, `**Action:** ship it`). A
+notes page is NOT a conversation, and gbrain won't treat it as one — even
+when a few bold labels sit at the very top of the page. We score the whole
+document's density, not just the first few lines, so a mostly-prose page
+with scattered bold labels stays unparsed instead of turning into fake
+"messages" that pollute your facts.
+
+**The orphan-check fix.** "Orphan ratio" is the fraction of your pages that
+nothing links to — a health signal for `gbrain doctor`. On a brain with
+multiple sources, `gbrain doctor --source dept-x` ignored the flag and
+reported a brain-wide number. Now it scopes to the source you asked about,
+and so does `gbrain orphans --source dept-x`:
+
+```
+gbrain doctor --source dept-x      # orphan ratio for dept-x only
+gbrain orphans --source dept-x     # the orphan list for dept-x only
+```
+
+A page in dept-x that's linked from another source counts as reachable (not
+an orphan) — the cross-source link still saves it.
+
+While we were in there we fixed two more things you'll feel:
+
+- The orphan ratio was reading lower than reality because junk pages
+  (templates, scratch, archives) that happen to be linked were padding the
+  denominator. The ratio is now honest, which means warnings that were
+  staying quiet will start showing up. This changes the number on every
+  brain, in the right direction.
+- An agent connected over MCP and scoped to one source used to get the
+  orphan list for your *whole* brain. Now `find_orphans` respects the
+  agent's source scope, closing a cross-source read leak.
+
+### To take advantage of v0.41.29.0
+
+`gbrain upgrade` handles this — there's no schema migration and no manual
+step. After upgrading:
+
+1. **Conversation parsing** is automatic. Your next `gbrain dream` /
+   `gbrain extract conversation-facts` run will pick up `**Speaker:** text`
+   pages. To preview a specific page:
+   ```bash
+   gbrain conversation-parser scan <slug>
+   ```
+2. **Per-source orphan checks** work immediately:
+   ```bash
+   gbrain doctor --source <id>
+   gbrain orphans --source <id>
+   ```
+3. **If `gbrain doctor` shows a higher orphan ratio than before,** that's the
+   denominator fix surfacing real orphans that were previously hidden. Run
+   `gbrain extract links --by-mention` to auto-link entity mentions, then
+   `gbrain orphans` for the list.
+4. **If anything looks wrong,** file an issue at
+   https://github.com/garrytan/gbrain/issues with `gbrain doctor` output.
+
+### Itemized changes
+
+**Conversation parser**
+- New 14th built-in pattern `bold-name-no-time` in
+  `src/core/conversation-parser/builtins.ts` (regex `/^\*\*(?!\[)(.+?):\*\*\s*(.*)$/`):
+  parses `**Speaker:** text` with no per-line timestamp (Circleback / Granola
+  / Zoom), anchored at `T00:00:00Z` of the frontmatter date. Declared after
+  the timestamped bold patterns; the colon-inside-bold regex (not declaration
+  order) is what prevents it from shadowing `bold-paren-time`. The `(?!\[)`
+  lookahead keeps it from mis-capturing telegram-bracket `**[18:37] Name:**`
+  lines as `speaker="[18:37] Name"`.
+- New optional `PatternEntry.score_full_body` field + a full-body acceptance
+  recompute in `parse.ts`: broad patterns are scored on whole-document
+  density before the acceptance floor, so a prose notes page with bold labels
+  clustered in its first 10 lines no longer mis-parses as a conversation.
+- Fixture coverage: `test/fixtures/conversation-formats/bold-name-no-time.jsonl`
+  + entries in `all.jsonl` and a clustered-head adversarial fixture in
+  `adversarial.jsonl` (all placeholder names).
+
+**Orphan source scoping**
+- `BrainEngine.findOrphanPages(opts?: { sourceId?, sourceIds? })` (both
+  engines): scopes the candidate set to one source (scalar) or a federated
+  set (`= ANY(...)`). Inbound links from any source still count, so a
+  cross-source-linked page is correctly not an orphan.
+- `gbrain orphans --source <id>` and `gbrain doctor --source <id>` (orphan_ratio
+  check) honor an explicit source. Bare invocations stay brain-wide.
+- Corrected the `total_linkable` denominator in `findOrphans` so excluded
+  pages (templates/, scratch/, etc.) that have inbound links no longer
+  inflate it and suppress warnings. Changes orphan_ratio output for every
+  brain (in the accurate direction).
+- The `find_orphans` MCP op now scopes by the caller's source
+  (`sourceScopeOpts(ctx)`), closing a cross-source read leak for source-bound
+  OAuth clients.
+- Under explicit `--source`, `orphan_ratio` reports the ratio with a
+  low-scale caveat below 100 entity pages instead of returning a vacuous
+  "ok" that could hide a fully-orphaned small source.
+
+**Tests**
+- `test/orphans-source-scope.test.ts` (PGLite): scoping, cross-source-inbound,
+  the denominator fix, and the `find_orphans` op-handler source scope.
+- `test/e2e/engine-parity.test.ts`: Postgres↔PGLite parity for
+  `findOrphanPages` scalar + federated scoping.
+- New `bold-name-no-time` + clustered-head regression cases in
+  `test/conversation-parser/parse.test.ts`.
+
+Incorporates the original `bold-name-no-time` pattern proposed in a community
+PR; names scrubbed to placeholders per the project privacy rule.
+
 ## [0.41.28.0] - 2026-05-27
 
 **Your `gbrain dream` cycle stops losing rows when the database connection
