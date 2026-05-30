@@ -120,6 +120,128 @@ The feature is dormant until used.
 Measured against PrecisionMemBench in the sibling gbrain-evals repo (faithful
 vendored scorer); the default-off path is byte-identical to prior behavior (the
 existing search suite passes unchanged).
+## [0.41.32.0] - 2026-05-30
+
+**A quiet repo that's fully caught up no longer screams `SEVERELY STALE` in
+`gbrain doctor`. Staleness now means "is there committed content the sync hasn't
+ingested?" — not "how long has the wall clock been ticking since the last sync
+ran."**
+
+If you keep a federated source that doesn't get a commit for days, the old check
+kept escalating — 24h "stale", 72h "severely stale" — even though the sync had
+everything the repo contained. It was pure wall-clock noise, and it trained you
+to ignore the alert. Worse, a repo with a couple of stray untracked folders
+(`companies/`, `media/`) tripped it even right after a sync, because the
+freshness gate counted untracked files as "uncommitted work."
+
+Now the gate asks the right question. A source is caught up when its current
+commit is the one the sync recorded (`HEAD == last_commit`) and there are no
+uncommitted edits to *tracked* files. Untracked folders are ignored — they're
+not part of the repo, and `gbrain sync` never imports them anyway. If that holds,
+lag is `0` and the source reports clean, no matter how long ago the sync ran.
+
+### How to use it
+
+Nothing to turn on. Run `gbrain doctor` (or `gbrain sources status`) and a quiet,
+caught-up source now shows fresh instead of stale. After `gbrain upgrade`,
+migration v109 adds one column and the next `gbrain sync` starts populating it.
+
+### What you'd see
+
+| Scenario | Old metric | New metric |
+|---|---|---|
+| Quiet repo, caught up (newest commit predates last sync) | grows forever → SEVERELY STALE | **0 → fresh** |
+| Repo with new commits the sync hasn't pulled | wall-clock | wall-clock → stale (correct) |
+| HEAD force-pushed to an older-dated commit | could read "caught up" | **stale** (compares the commit hash, not its date) |
+| Non-git path / never synced | wall-clock | wall-clock (unchanged) |
+| Future `last_sync_at` (clock skew) | warns | warns (unchanged) |
+
+### Local vs remote, and the trust boundary we kept
+
+The local `gbrain doctor` (running on the machine that has your checkouts) reads
+the live commit hash, so it always catches new commits the sync hasn't pulled —
+your authoritative signal. The remote surfaces (`gbrain remote doctor`,
+`federation_health`, and the `get_status_snapshot` MCP op) read a stored
+`sources.newest_content_at` column written at sync time instead of running `git`
+against a database-supplied path — preserving the v0.41.27.0 rule that a
+remote-callable endpoint never shells out to a path an OAuth client could
+influence. A `NULL` column falls back to wall-clock, so nothing regresses before
+your next sync.
+
+### What we caught before merging
+
+An early version compared content *timestamps* (`newest content <= last sync`).
+That's wrong when HEAD moves to a commit with an *older* author date — a rebase
+that preserves dates, a branch rewind, an imported old commit — it would call a
+genuinely-behind source "caught up." Switching to the commit *hash* fixes it and
+also drops a fragile `git status` mtime-parsing path. The remote-path git
+subprocess was gated back behind the trust boundary, and two regression tests
+pin both: the headline untracked-folders case and the "remote path never shells
+out to git" guarantee.
+
+### For contributors
+
+New `scripts/ship-remote-tests.sh` offloads the test suite to GitHub's on-demand
+runners and blocks on the result with a real exit code (`gh run watch
+--exit-status`). When your local machine is saturated (many agents running their
+own `bun test` at once), run the gate in the cloud instead of fighting for CPU.
+`test.yml` now also accepts `workflow_dispatch` so it can be triggered from any
+branch.
+
+### To take advantage of v0.41.32.0
+
+`gbrain upgrade` should do this automatically. If it didn't, or if `gbrain
+doctor` warns about a partial migration:
+
+1. **Apply the migration:**
+   ```bash
+   gbrain apply-migrations --yes
+   ```
+   This adds `sources.newest_content_at` (migration v109) — a metadata-only
+   column add, instant on any brain size.
+2. **Run a sync so the column populates:**
+   ```bash
+   gbrain sync           # or `gbrain sync --all` on a federated brain
+   ```
+   Until a source syncs once post-upgrade, its remote staleness falls back to
+   the old wall-clock measure (the local doctor is already accurate via live git).
+3. **Verify:**
+   ```bash
+   gbrain doctor --json | grep -A2 sync_freshness
+   gbrain sources status
+   ```
+   A quiet, caught-up source should report `ok` / lag 0.
+4. **If anything looks wrong,** file an issue with `gbrain doctor` output and the
+   contents of `~/.gbrain/upgrade-errors.jsonl` if it exists.
+
+### Itemized changes
+
+- **`src/core/git-head.ts`** — `isSourceUnchangedSinceSync`'s `requireCleanWorkingTree`
+  now accepts `'ignore-untracked'` (alongside `true`/`false`); the clean probe runs
+  `git status --porcelain --untracked-files=no` in that mode. This is the one-line
+  headline fix: untracked folders no longer defeat the freshness short-circuit.
+- **`src/core/source-health.ts`** — new `newestCommitMs(localPath)` (HEAD committer
+  time via `git log -1 --format=%ct`, fail-open null) and pure `lagFromContentMs(contentMs,
+  lastSyncMs, nowMs)` comparator for the remote/column path; `computeAllSourceMetrics`
+  gains `{ probeContent }` (local opts into the live commit-hash probe, remote reads the
+  column). Dead `isSourceStale(src, intervalMs)` removed (only `autopilot-fanout.ts`'s
+  own variant was live).
+- **`src/core/migrate.ts` v109** + `src/schema.sql` + `src/core/pglite-schema.ts` (+
+  regenerated `schema-embedded.ts`) — `sources.newest_content_at TIMESTAMPTZ`.
+- **`src/commands/sync.ts`** — `writeSyncAnchor` stamps `newest_content_at` (HEAD committer
+  time) in the same atomic UPDATE as `last_commit`/`last_sync_at`; `buildSyncStatusReport`
+  (the remote `get_status_snapshot` op) reads the column via `lagFromContentMs` — no git
+  subprocess.
+- **`src/commands/doctor.ts`** — `checkSyncFreshness` short-circuit uses `'ignore-untracked'`;
+  the remote (non-`localOnly`) path computes lag from the stored column; the `< 0` clock-skew
+  check stays on raw wall-clock.
+- **`src/commands/sources.ts`** — `gbrain sources status` opts into the live probe
+  (`probeContent: true`).
+- **Tests** — `test/source-health.test.ts` (commit-hash caught-up incl. the old-dated-commit
+  regression, `lagFromContentMs` matrix, `newestCommitMs`, probeContent local/remote),
+  `test/doctor.test.ts` (T1 untracked-folders headline bug, T2 remote-never-shells-out trust
+  boundary), `test/sync-all-parallel.test.ts` (column-path staleness).
+- **CI tooling** — `scripts/ship-remote-tests.sh` + `workflow_dispatch` on `test.yml`.
 ## [0.41.31.0] - 2026-05-30
 
 **Your nightly `gbrain sync --all` cron stops getting blocked. It used to
