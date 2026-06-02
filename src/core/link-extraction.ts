@@ -15,7 +15,7 @@ import type { BrainEngine } from './engine.ts';
 import type { PageType } from './types.ts';
 
 /**
- * v0.42.2 — link-extraction version stamp. Bump this ISO timestamp whenever the
+ * v0.42.7 — link-extraction version stamp. Bump this ISO timestamp whenever the
  * shape of `extractPageLinks` / `inferLinkType` / `parseTimelineEntries` changes
  * meaningfully, so the extraction freshness watermark (`pages.links_extracted_at`)
  * treats every previously-stamped page as stale and re-extracts it on the next

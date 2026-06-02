@@ -2139,7 +2139,7 @@ describe('migrate v89 — round-trip on PGLite', () => {
   });
 });
 
-// v0.42.2 (#1696): pages_links_extracted_at watermark migration.
+// v0.42.7 (#1696): pages_links_extracted_at watermark migration.
 describe('v112 — pages_links_extracted_at', () => {
   let engine: PGLiteEngine;
   beforeAll(async () => {

@@ -1,5 +1,5 @@
 /**
- * v0.42.2 (#1696, D5) — the end-of-sync extraction-lag nudge status gate.
+ * v0.42.7 (#1696, D5) — the end-of-sync extraction-lag nudge status gate.
  *
  * Codex caught that the single-source nudge was gated `=== 'synced'`, which
  * skips `first_sync` (a fresh / --full import — the BIGGEST un-extracted

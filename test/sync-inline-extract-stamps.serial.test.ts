@@ -1,10 +1,10 @@
 /**
- * CRITICAL regression (v0.42.2, #1696, CDX-6) — inline sync extract stamps the
+ * CRITICAL regression (v0.42.7, #1696, CDX-6) — inline sync extract stamps the
  * link-extraction watermark.
  *
  * `performSync`'s INCREMENTAL path runs link/timeline extraction inline for the
  * changed pages (the `gbrain sync` default — see performSyncInner's auto-extract
- * block). v0.42.2 adds a `stampExtracted` call at that call site (after
+ * block). v0.42.7 adds a `stampExtracted` call at that call site (after
  * extractLinksForSlugs/extractTimelineForSlugs) so a normal incremental sync
  * marks the pages it just extracted as fresh — otherwise every synced page
  * would show as stale forever in the links_extraction_lag doctor check.

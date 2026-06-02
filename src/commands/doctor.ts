@@ -671,7 +671,7 @@ export async function doctorReportRemote(engine: BrainEngine): Promise<DoctorRep
   // v0.41.19.0 (Issue 5): sync --all consolidation nudge for multi-source brains.
   checks.push(await checkSyncConsolidation(engine));
 
-  // v0.42.2 (#1696): link-extraction lag. Strictly SQL (single indexed COUNT),
+  // v0.42.7 (#1696): link-extraction lag. Strictly SQL (single indexed COUNT),
   // safe on the thin-client/remote path — remote operators on checkout-less
   // Postgres brains are exactly who can't otherwise see the extraction backlog.
   // Brain-wide here (remote --source scoping is a separate TODO, like orphan_ratio).
@@ -2307,11 +2307,11 @@ const checkSubagentProvider = checkSubagentCapability;
 void checkSubagentProvider;
 
 // Module-scoped set so each invalid-env-var warning fires once per process,
-// per variable name (v0.42.2 #1696: was a single bool shared across all vars).
+// per variable name (v0.42.7 #1696: was a single bool shared across all vars).
 const _envNumberWarned = new Set<string>();
 
 /**
- * v0.42.2 (#1696): single source of truth for the extraction-lag warn
+ * v0.42.7 (#1696): single source of truth for the extraction-lag warn
  * threshold (percent). Both the `links_extraction_lag` doctor check AND the
  * end-of-sync nudge (`sync.ts:maybeExtractionNudge`) resolve through this +
  * `_resolveEnvNumber` so "the nudge fires iff doctor would warn" can't drift.
@@ -2323,7 +2323,7 @@ export const EXTRACTION_LAG_WARN_PCT_DEFAULT = 20;
 export const EXTRACTION_LAG_MIN_PAGES = 100;
 
 /**
- * v0.42.2 (#1696, C1): generic "read a positive number from an env var, warn
+ * v0.42.7 (#1696, C1): generic "read a positive number from an env var, warn
  * once + fall back on garbage." Extracted from _resolveSyncFreshnessHours so
  * the percent-threshold doctor checks don't reuse a `...Hours`-named helper.
  * `opts.unit` is purely cosmetic for the warning string ('h', '%', '').
@@ -2559,7 +2559,7 @@ export async function computeConversationFactsBacklogCheck(
 }
 
 /**
- * v0.42.2 (#1696) — links_extraction_lag doctor check.
+ * v0.42.7 (#1696) — links_extraction_lag doctor check.
  *
  * The signal that surfaces the "imported ≠ curated" root cause: pages whose
  * link/timeline extraction is stale (never run, edited-since, or extractor
@@ -6008,7 +6008,7 @@ export async function buildChecks(
     // v0.41.19.0 (Issue 5): sync --all consolidation nudge.
     progress.heartbeat('sync_consolidation');
     checks.push(await checkSyncConsolidation(engine));
-    // v0.42.2 (#1696): link-extraction lag. --source scopes it (explicit-only
+    // v0.42.7 (#1696): link-extraction lag. --source scopes it (explicit-only
     // parse, like orphan_ratio); bare doctor stays brain-wide. Fix: extract --stale.
     progress.heartbeat('links_extraction_lag');
     checks.push(await checkLinksExtractionLag(engine, { sourceId: orphanRatioSourceId }));

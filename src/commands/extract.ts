@@ -67,7 +67,7 @@ import { parseWorkers, resolveWorkersWithClamp } from '../core/sync-concurrency.
 // small (a malformed row aborts at most 100, not thousands).
 const BATCH_SIZE = 100;
 
-// v0.42.2 (#1696): keyset batch size for `extract --stale`. SMALL by design —
+// v0.42.7 (#1696): keyset batch size for `extract --stale`. SMALL by design —
 // listStalePagesForExtraction returns page CONTENT (compiled_truth + timeline),
 // which is unbounded (25MB transcript pages exist). The LIMIT is the only memory
 // bound: the per-batch byte cap CDX-5 described can't run post-fetch (the fetch
@@ -75,13 +75,13 @@ const BATCH_SIZE = 100;
 // 25 caps the worst case at ~625MB even if every page is a 25MB transcript.
 // Normal pages are KBs; raise via GBRAIN_EXTRACT_STALE_BATCH for throughput.
 const STALE_BATCH_SIZE = Math.max(1, Number(process.env.GBRAIN_EXTRACT_STALE_BATCH) || 25);
-// v0.42.2: wall-clock budget for one `extract --stale` invocation (default
+// v0.42.7: wall-clock budget for one `extract --stale` invocation (default
 // 30 min). `--catch-up` removes the cap (loops until 0 stale). Mirrors
 // embedAllStale's time-budget shape.
 const STALE_TIME_BUDGET_MS = Math.max(1000, Number(process.env.GBRAIN_EXTRACT_TIME_BUDGET_MS) || 30 * 60 * 1000);
 
 /**
- * v0.42.2 (#1696): best-effort extraction stamp for the source-correct write
+ * v0.42.7 (#1696): best-effort extraction stamp for the source-correct write
  * sites (inline sync, `extract --source db`). Wraps `markPagesExtractedBatch`
  * and NEVER throws — a stamp failure here just means the page stays "stale" and
  * gets swept by `extract --stale` later. Do NOT use this in the `--stale` sweep
@@ -100,7 +100,7 @@ export async function stampExtracted(
 }
 
 /**
- * v0.42.2 (#1696): pure cross-source resolution for one extracted link
+ * v0.42.7 (#1696): pure cross-source resolution for one extracted link
  * candidate. Validates both endpoints exist (else the batch JOIN drops the row),
  * then picks from_source_id / to_source_id: prefer the origin page's source,
  * fall back to 'default', else skip (never push a wrong-source edge). Returns
@@ -523,7 +523,7 @@ export async function runExtract(engine: BrainEngine, args: string[]) {
     return runExtractExplain(engine, args);
   }
 
-  // v0.42.2 (#1696): `gbrain extract --stale` — incremental link+timeline sweep
+  // v0.42.7 (#1696): `gbrain extract --stale` — incremental link+timeline sweep
   // over pages whose links_extracted_at watermark is stale. Intercepts BEFORE
   // the links|timeline|all subcommand validation so `gbrain extract --stale`
   // works with no subcommand (and `gbrain extract all --stale` too). DB-source
@@ -632,7 +632,7 @@ Extraction (existing):
   gbrain extract <links|timeline|all> --ner --source db
   gbrain extract <timeline|all> --from-meetings
 
-Incremental sweep (v0.42.2):
+Incremental sweep (v0.42.7):
   gbrain extract --stale [--source-id <id>] [--catch-up] [--dry-run] [--json]
       Re-extract links + timeline ONLY for pages whose extraction is stale
       (never extracted, edited since, or extractor bumped). DB-source; safe to
@@ -1210,7 +1210,7 @@ async function extractLinksFromDB(
     slugToSources.set(ref.slug, list);
   }
   let processed = 0, created = 0;
-  // v0.42.2 (#1696): pages whose links we extracted this run — stamped after
+  // v0.42.7 (#1696): pages whose links we extracted this run — stamped after
   // the loop so a manual `gbrain extract links|all --source db` clears the
   // links_extraction_lag doctor signal. Non-dry-run only.
   const processedRefs: Array<{ slug: string; source_id: string }> = [];
@@ -1260,7 +1260,7 @@ async function extractLinksFromDB(
 
     for (const c of extracted.candidates) {
       // v0.32.8 F10 cross-source link resolution, extracted to the shared pure
-      // helper in v0.42.2 (#1696) so extract --stale reuses the exact same
+      // helper in v0.42.7 (#1696) so extract --stale reuses the exact same
       // endpoint-validation + from/to source-id picking (null = skip: missing
       // endpoint OR target only in a non-origin/non-default source).
       const resolved = resolveCandidateSources(c, slug, source_id, allSlugs, slugToSources);
@@ -1305,7 +1305,7 @@ async function extractLinksFromDB(
     progress.tick(1);
   }
   await flush();
-  // v0.42.2 (#1696): stamp the extraction watermark for every page we
+  // v0.42.7 (#1696): stamp the extraction watermark for every page we
   // processed (incl. zero-link pages — they WERE extracted). Chunked so the
   // unnest UPDATE stays bounded on big brains. Best-effort (stampExtracted
   // swallows): a stamp miss just leaves the page for extract --stale.
@@ -1430,7 +1430,7 @@ async function extractTimelineFromDB(
 }
 
 /**
- * v0.42.2 (#1696) — `gbrain extract --stale`: incremental link + timeline
+ * v0.42.7 (#1696) — `gbrain extract --stale`: incremental link + timeline
  * extraction over pages whose `links_extracted_at` watermark is stale (NULL,
  * older than LINK_EXTRACTOR_VERSION_TS, or older than the page's updated_at).
  * DB-source (works on checkout-less Postgres/Supabase brains). Mirrors

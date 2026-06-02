@@ -413,7 +413,7 @@ describeBoth('Engine parity — Postgres vs PGLite', () => {
     expect(pgliteFed).toEqual(pgFed);
   });
 
-  // v0.42.2 (#1696): stale-page extraction watermark parity. Isolated under a
+  // v0.42.7 (#1696): stale-page extraction watermark parity. Isolated under a
   // dedicated source so other tests' mutations don't perturb the counts.
   test('stale-page extraction methods: Postgres ↔ PGLite parity', async () => {
     const SRC = 'stale-parity';

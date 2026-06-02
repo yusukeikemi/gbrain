@@ -540,7 +540,7 @@ export class PGLiteEngine implements BrainEngine {
     // No SCHEMA_SQL index references it today; bootstrap is defense-in-depth
     // so future schema work doesn't wedge pre-v108 brains.
     const needsPagesEmbeddingSignature = probe.pages_exists && !probe.pages_embedding_signature_exists;
-    // v0.42.2 (v112): pages.links_extracted_at link-extraction freshness
+    // v0.42.7 (v112): pages.links_extracted_at link-extraction freshness
     // watermark. pages_links_extracted_at_idx in PGLITE_SCHEMA_SQL references
     // it; pre-v112 brains crash without the column, so bootstrap adds it before
     // the CREATE INDEX runs. v112 runs later via runMigrations and is idempotent.
@@ -2314,7 +2314,7 @@ export class PGLiteEngine implements BrainEngine {
     );
   }
 
-  // ── v0.42.2 (#1696): link/timeline extraction freshness watermark ──
+  // ── v0.42.7 (#1696): link/timeline extraction freshness watermark ──
 
   /** Shared stale-for-extraction predicate (mirrors PostgresEngine). */
   private buildStalePagesWhere(opts?: { sourceId?: string; versionTs?: string }): { where: string; params: unknown[] } {

@@ -1028,7 +1028,7 @@ export interface BrainEngine {
   deleteChunks(slug: string, opts?: { sourceId?: string }): Promise<void>;
 
   // ============================================================
-  // v0.42.2 (#1696): link/timeline extraction freshness watermark.
+  // v0.42.7 (#1696): link/timeline extraction freshness watermark.
   // A page is stale for extraction when its links_extracted_at is NULL,
   // older than the extractor version stamp, or older than its updated_at
   // (edited-since-extract — the MCP put_page / sync --no-extract path).
@@ -1061,7 +1061,7 @@ export interface BrainEngine {
    *
    * Each ref may carry its own `extractedAt`; refs that omit it use the
    * `defaultExtractedAt` arg. `gbrain extract --stale` passes the row's READ
-   * `updated_at` per ref (v0.42.2 D4 race fix) so a concurrent edit landing
+   * `updated_at` per ref (v0.42.7 D4 race fix) so a concurrent edit landing
    * between the SELECT and this stamp advances `updated_at` past the stamped
    * value → the page stays stale → re-extracted next run, never marked
    * fresh-with-the-old-content. Sync / DB-extract sites omit per-ref values and

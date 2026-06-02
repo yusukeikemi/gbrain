@@ -549,7 +549,7 @@ export class PostgresEngine implements BrainEngine {
     // v0.41.31 (v108): pages.embedding_signature for real stale semantics.
     // No SCHEMA_SQL index references it; bootstrap is defense-in-depth.
     const needsPagesEmbeddingSignature = probe.pages_exists && !probeCr.pages_embedding_signature_exists;
-    // v0.42.2 (v112): pages.links_extracted_at link-extraction freshness
+    // v0.42.7 (v112): pages.links_extracted_at link-extraction freshness
     // watermark. pages_links_extracted_at_idx in SCHEMA_SQL references it;
     // pre-v112 brains crash without the column, so bootstrap adds it before
     // SCHEMA_SQL replay creates the index. v112 runs later via runMigrations
@@ -2358,7 +2358,7 @@ export class PostgresEngine implements BrainEngine {
     `;
   }
 
-  // ── v0.42.2 (#1696): link/timeline extraction freshness watermark ──
+  // ── v0.42.7 (#1696): link/timeline extraction freshness watermark ──
 
   /** Shared stale-for-extraction predicate. Returns `{ where, params }`. */
   private buildStalePagesWhere(opts?: { sourceId?: string; versionTs?: string }): { where: string; params: unknown[] } {

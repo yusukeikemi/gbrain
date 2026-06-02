@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS pages (
   -- (NOT inside engine methods — internal callers must not pollute the
   -- signal). NULL = never retrieved (LSD prioritizes these first).
   last_retrieved_at     TIMESTAMPTZ,
-  -- v0.42.2 (migration v112): link-extraction freshness watermark. Set when
+  -- v0.42.7 (migration v112): link-extraction freshness watermark. Set when
   -- link/timeline extraction last ran for this page (inline sync, \`extract
   -- --source db\`, or \`extract --stale\`). A page is stale for extraction when
   -- this is NULL, older than LINK_EXTRACTOR_VERSION_TS, or older than
@@ -261,7 +261,7 @@ CREATE INDEX IF NOT EXISTS pages_deleted_at_purge_idx
 -- would miss the NULL branch that LSD prioritizes (codex round 2 #6).
 CREATE INDEX IF NOT EXISTS pages_last_retrieved_at_idx
   ON pages (last_retrieved_at);
--- v0.42.2 (migration v112): composite B-tree backing \`extract --stale\` and the
+-- v0.42.7 (migration v112): composite B-tree backing \`extract --stale\` and the
 -- \`links_extraction_lag\` doctor check. source_id leads so source-scoped staleness
 -- scans (\`extract --stale --source X\`, \`gbrain doctor --source X\`) are indexed;
 -- the brain-wide COUNT still uses it via the leading column. NOT partial-NULL —

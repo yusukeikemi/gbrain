@@ -1,6 +1,6 @@
 /**
  * Tests for `gbrain extract --stale` + the link-extraction freshness watermark
- * (v0.42.2, #1696). Hermetic PGLite — no DATABASE_URL, no API keys.
+ * (v0.42.7, #1696). Hermetic PGLite — no DATABASE_URL, no API keys.
  *
  * Covers:
  *   - engine methods: countStalePagesForExtraction (NULL / version / edited-since

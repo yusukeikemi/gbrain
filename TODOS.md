@@ -1,6 +1,6 @@
 # TODOS
 
-## v0.42.2.0 extract-in-default-loop follow-ups (v0.42+)
+## v0.42.7.0 extract-in-default-loop follow-ups (v0.42+)
 
 Filed from the v0.42.2.0 wave (#1696 link/timeline extraction freshness
 watermark). Both surfaced by the Codex review (P1-D, P1-C) and deliberately
@@ -35,6 +35,27 @@ scoped OUT — neither is a #1696 regression. See plan + GSTACK REVIEW REPORT at
   page+source without clobbering manually-added or auto-link edges — mirrors the
   v0.41.37.0 tag-provenance deferral (#1621-followup). Defer until that column
   lands; until then `extract --stale` is reconcile-add-only by design.
+## v0.42.2.0 gbrain connect follow-ups (v0.42+)
+
+- [ ] **T6 (P3): `gbrain connect --env-token` form.** Ship the env-var-indirection
+  token form (`-H 'Authorization: Bearer ${GBRAIN_REMOTE_TOKEN}'`, single-quoted so
+  the shell doesn't pre-expand) ONLY after verifying that Claude Code actually expands
+  `${VAR}` inside a stored `-H` header at runtime. v0.42.2.0 deliberately ships the
+  literal-token default (matches the shipped docs, verified to work) because the
+  env-default was unverified — the shell expands `${...}` before `claude mcp add`
+  stores it, so it would have stored the literal token anyway. Verify CC behavior
+  first, then add the opt-in flag. Files: `src/commands/connect.ts` (token-form),
+  `docs/mcp/CLAUDE_CODE.md`.
+- [ ] **T7 (P3): Tier 2 — local thin-client over a bearer token.** `gbrain connect`
+  today only wires the MCP *connection* (Claude Code talks straight to the remote /mcp).
+  The local `gbrain` CLI (`gbrain search`, `gbrain remote ping/doctor`, routed ops) still
+  requires OAuth client-credentials — `remote_mcp` + `callRemoteTool`/`getAccessToken`
+  in `src/core/mcp-client.ts` are OAuth-only. To let the local CLI work against the
+  remote with just a bearer token, widen `remote_mcp` with a bearer path (`auth: 'bearer'`,
+  `bearer_token`), short-circuit `getAccessToken` when `auth === 'bearer'` (skip discovery +
+  /token mint), and teach `initRemoteMcp` (`src/commands/init.ts`) to write a bearer-shaped
+  config. Then `gbrain connect --install` can also `bun install -g` gbrain + write the config.
+  Deferred per D1 (Tier 1 only this release).
 
 ## v0.41.38.0 dream-postgres / source-pin follow-ups (v0.42+)
 

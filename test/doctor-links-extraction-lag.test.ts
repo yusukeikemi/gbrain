@@ -1,5 +1,5 @@
 /**
- * Tests for the `links_extraction_lag` doctor check (v0.42.2, #1696).
+ * Tests for the `links_extraction_lag` doctor check (v0.42.7, #1696).
  * Hermetic PGLite. Bulk-seeds pages via raw SQL (the check only does COUNT +
  * countStalePagesForExtraction — no real ingestion needed).
  */

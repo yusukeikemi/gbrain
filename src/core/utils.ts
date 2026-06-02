@@ -122,7 +122,7 @@ export function rowToPage(row: Record<string, unknown>): Page {
 }
 
 /**
- * v0.42.2 (#1696) — map a DB row to a StalePageRow for the extraction
+ * v0.42.7 (#1696) — map a DB row to a StalePageRow for the extraction
  * freshness sweep. Shared by both engines so frontmatter JSONB parsing can't
  * drift. Mirrors rowToPage's `typeof === 'string' ? JSON.parse` idiom; tolerates
  * NULL compiled_truth/timeline/frontmatter (empty-string / {} fallback).

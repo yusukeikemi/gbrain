@@ -527,7 +527,7 @@ export interface StaleChunkRow {
 }
 
 /**
- * v0.42.2 (#1696) — a page that needs link/timeline extraction, returned by
+ * v0.42.7 (#1696) — a page that needs link/timeline extraction, returned by
  * `listStalePagesForExtraction`. Carries the page CONTENT (compiled_truth +
  * timeline + frontmatter) so `gbrain extract --stale` extracts in ~1 query per
  * batch instead of an N+1 `getPage` per page (mirrors how StaleChunkRow carries

@@ -162,7 +162,7 @@ const REQUIRED_BOOTSTRAP_COVERAGE: ForwardReference[] = [
   // semantics. No SCHEMA_SQL index references it; bootstrap probe is
   // defense-in-depth (and satisfies the MIGRATIONS ADD COLUMN coverage gate).
   { kind: 'column', table: 'pages', column: 'embedding_signature' },
-  // v0.42.2 (v112) — forward-referenced by `CREATE INDEX
+  // v0.42.7 (v112) — forward-referenced by `CREATE INDEX
   // pages_links_extracted_at_idx ON pages (source_id, links_extracted_at)`.
   // Pre-v112 brains have pages without this column; bootstrap adds it before
   // SCHEMA_SQL replay creates the index. Powers `gbrain extract --stale` + the

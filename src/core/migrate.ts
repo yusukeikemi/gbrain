@@ -5026,7 +5026,7 @@ export const MIGRATIONS: Migration[] = [
   {
     version: 112,
     name: 'pages_links_extracted_at',
-    // v0.42.2 (#1696) — link-extraction freshness watermark.
+    // v0.42.7 (#1696) — link-extraction freshness watermark.
     //
     // Closes the "imported ≠ curated" root cause: extraction is the silent third
     // leg of `sync → extract → embed`, and a brain with autopilot off (the common

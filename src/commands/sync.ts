@@ -62,7 +62,7 @@ import { newestCommitMs, lagFromContentMs } from '../core/source-health.ts';
 import { sortNewestFirst } from '../core/sort-newest-first.ts';
 
 /**
- * v0.42.2 (#1696, D5): which terminal sync statuses warrant the end-of-sync
+ * v0.42.7 (#1696, D5): which terminal sync statuses warrant the end-of-sync
  * extraction-lag nudge. Fires on every non-error completion — crucially
  * `first_sync` (a fresh / --full import is the BIGGEST un-extracted backlog) and
  * `up_to_date` (a no-op sync over a brain with a pre-existing backlog still
@@ -1846,7 +1846,7 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
       if (linksCreated > 0 || timelineCreated > 0) {
         slog(`  Extracted: ${linksCreated} links, ${timelineCreated} timeline entries`);
       }
-      // v0.42.2 (#1696, CDX-6): stamp the links_extracted_at watermark for the
+      // v0.42.7 (#1696, CDX-6): stamp the links_extracted_at watermark for the
       // pages we just extracted, AFTER the import set their updated_at, so
       // links_extracted_at >= updated_at (page is now fresh, not flagged stale).
       // Source-correct via opts.sourceId. Stamp at the CALL SITE (not inside
@@ -2166,7 +2166,7 @@ See also:
   const full = args.includes('--full');
   const noPull = args.includes('--no-pull');
   const noEmbed = args.includes('--no-embed');
-  const noExtract = args.includes('--no-extract'); // v0.42.2 #1696
+  const noExtract = args.includes('--no-extract'); // v0.42.7 #1696
   const skipFailed = args.includes('--skip-failed');
   const retryFailed = args.includes('--retry-failed');
   const noSchemaPack = args.includes('--no-schema-pack'); // v0.41.37.0 #1569
@@ -2786,7 +2786,7 @@ See also:
       }));
     }
 
-    // v0.42.2 (#1696): brain-wide extraction-lag nudge after the --all wave.
+    // v0.42.7 (#1696): brain-wide extraction-lag nudge after the --all wave.
     // Best-effort, stderr-only; skipped on dry-run.
     if (!dryRun) await maybeExtractionNudge(engine);
 
@@ -2832,7 +2832,7 @@ See also:
       if (singleSourceTimer !== undefined) clearTimeout(singleSourceTimer);
     }
     printSyncResult(result);
-    // v0.42.2 (#1696, D5): extraction-lag nudge after a completed single-source
+    // v0.42.7 (#1696, D5): extraction-lag nudge after a completed single-source
     // sync. Fire on every non-error completion (synced | first_sync | up_to_date)
     // — NOT just 'synced'; a fresh/--full import (`first_sync`) is the biggest
     // un-extracted backlog. Scoped to this source; best-effort, stderr-only.
@@ -2970,7 +2970,7 @@ export async function syncOneSource(
     concurrency: number | undefined;
     /** v0.41.37.0 #1569: propagate --no-schema-pack into every per-source sync. */
     noSchemaPack?: boolean;
-    /** v0.42.2 #1696: propagate --no-extract into every per-source sync. */
+    /** v0.42.7 #1696: propagate --no-extract into every per-source sync. */
     noExtract?: boolean;
   },
 ): Promise<{ result: SyncResult; log: string }> {
@@ -3451,7 +3451,7 @@ export function manageGitignore(
 }
 
 /**
- * v0.42.2 (#1696): one-line end-of-sync nudge when the brain (or a source)
+ * v0.42.7 (#1696): one-line end-of-sync nudge when the brain (or a source)
  * carries a meaningful link/timeline extraction backlog. Reuses the same warn
  * threshold (GBRAIN_EXTRACTION_LAG_WARN_PCT, default 20%) the doctor check uses
  * so the nudge fires iff doctor would warn — one source of truth. Always
