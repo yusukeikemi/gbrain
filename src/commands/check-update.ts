@@ -67,7 +67,7 @@ export async function fetchLatestRelease(): Promise<{ tag: string; published_at:
   }
 }
 
-async function fetchChangelog(currentVersion: string, latestVersion: string): Promise<string> {
+export async function fetchChangelog(currentVersion: string, latestVersion: string): Promise<string> {
   try {
     const res = await fetch('https://raw.githubusercontent.com/garrytan/gbrain/master/CHANGELOG.md', {
       signal: AbortSignal.timeout(5_000),

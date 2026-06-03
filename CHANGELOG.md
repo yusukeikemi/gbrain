@@ -50,7 +50,8 @@ Things worth knowing: this is the same TLS-plus-GitHub trust model `gbrain upgra
 - **Autopilot silent channel** (opt-in `auto`): swap-only + breadcrumb + exit-for-relaunch. `installSystemd` now writes `Restart=always` (a clean exit must relaunch the new binary, since Bun has no `execve`); `gbrain upgrade` rewrites an existing `Restart=on-failure` unit in place (only when it matches the generated template; hand-edited units are left alone).
 - **Atomic binary self-update** (`src/core/binary-self-update.ts`) for macOS-arm64 / Linux-x64; `gbrain upgrade --swap-only` for the daemon fast path.
 - **`gbrain doctor` → `self_upgrade_health`**: mode, whether you're behind, recent failures.
-- **New `gbrain-upgrade` agent skill** mirroring the inline upgrade flow, wired into the resolver.
+- **New `gbrain-upgrade` agent skill** mirroring the inline upgrade flow, wired into the resolver. The notify prompt now shows **what's new** (the changelog between your version and the new one, surfaced by `gbrain self-upgrade --check-only --json`), not just version numbers.
+- **Agent integration:** `setup` injects a self-upgrade marker protocol into AGENTS.md so interactive agents (Claude Code, Codex) act on the `UPGRADE_AVAILABLE` stderr marker; the daily HEARTBEAT beat routes through the skill for cron-cadence agents (OpenClaw, Hermes); `auto`-mode daemons ride the autopilot tick.
 - Config plane: `self_upgrade.mode` (`auto`/`notify`/`off`, default notify) plus quiet-hours and state keys, all file-plane so the hot path needs no DB.
 - New tests: pure decision matrix, atomic-cache/snooze, marker grammar, a real-HTTP-server binary-swap E2E, and a network-stubbed refresh-orchestration test.
 

@@ -75,13 +75,27 @@ Confirm a real update first, then ask the operator:
 gbrain self-upgrade --check-only --json
 ```
 
-If `update_available` is `true`, present a 4-option question:
+If `update_available` is `true`, tell the operator WHAT they'll get before
+asking. The JSON includes `changelog_diff` (CHANGELOG entries between their
+version and the new one) and `release_url`. Summarize it into 3-5 plain bullets
+of what's new — do NOT paste the raw diff. Then present the 4-option question:
 
-> gbrain v{new} is available (you're on v{old}). Upgrade now?
+> gbrain v{new} is available (you're on v{old}).
+>
+> What's new:
+> - {bullet 1 from changelog_diff}
+> - {bullet 2}
+> - {bullet 3}
+> (Full notes: {release_url})
+>
+> Upgrade now?
 > 1. Yes, upgrade now
 > 2. Always keep me up to date
 > 3. Not now
 > 4. Never ask again
+
+If `changelog_diff` is empty (network blip / no notes), ask without the bullets
+rather than blocking — the version numbers alone are enough to decide.
 
 - **Yes** → `gbrain self-upgrade`
 - **Always** → `gbrain config set self_upgrade.mode auto` then `gbrain self-upgrade`

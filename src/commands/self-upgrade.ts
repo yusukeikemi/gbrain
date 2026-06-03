@@ -1,6 +1,6 @@
 import { VERSION } from '../version.ts';
 import { isMinorOrMajorBump, isValidVersionString } from '../core/semver.ts';
-import { fetchLatestRelease } from './check-update.ts';
+import { fetchChangelog, fetchLatestRelease } from './check-update.ts';
 import { detectInstallMethod, runUpgrade } from './upgrade.ts';
 import { writeUpdateCache } from '../core/self-upgrade.ts';
 
@@ -53,6 +53,17 @@ export async function runSelfUpgrade(args: string[]): Promise<void> {
   }
 
   if (checkOnly) {
+    // Tell the operator WHAT they'd get: fetch the changelog only when actually
+    // behind (so an up-to-date check stays a single release fetch). The agent
+    // skill surfaces these "what's new" bullets in the notify prompt.
+    let changelogDiff = '';
+    if (behind && latest) {
+      try {
+        changelogDiff = await fetchChangelog(VERSION, latest);
+      } catch {
+        /* best-effort: an unavailable changelog must not block the check */
+      }
+    }
     if (json) {
       console.log(
         JSON.stringify(
@@ -61,6 +72,8 @@ export async function runSelfUpgrade(args: string[]): Promise<void> {
             latest_version: latest ?? '',
             update_available: behind,
             install_method: detectInstallMethod(),
+            release_url: release?.url ?? '',
+            changelog_diff: changelogDiff,
           },
           null,
           2,
@@ -68,6 +81,11 @@ export async function runSelfUpgrade(args: string[]): Promise<void> {
       );
     } else if (behind) {
       console.log(`Update available: ${VERSION} -> ${latest}. Run: gbrain self-upgrade`);
+      if (changelogDiff) {
+        console.log('\nWhat changed:\n');
+        console.log(changelogDiff);
+      }
+      if (release?.url) console.log(`\nRelease: ${release.url}`);
     } else {
       console.log(`gbrain ${VERSION} is up to date.`);
     }
