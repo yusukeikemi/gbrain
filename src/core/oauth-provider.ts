@@ -21,10 +21,12 @@ import type {
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { AuthInfo as SdkAuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { hashToken, generateToken, isUndefinedColumnError } from './utils.ts';
 import { hasScope, assertAllowedScopes, parseScopeString, InvalidScopeError } from './scope.ts';
+import type { AuthInfo as CoreAuthInfo } from './operations.ts';
+import { parseLegacyTokenScope } from './legacy-token-scope.ts';
 import type { SqlQuery, SqlValue } from './sql-query.ts';
 export type { SqlQuery, SqlValue };
 
@@ -539,7 +541,7 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
   // Token Verification
   // -------------------------------------------------------------------------
 
-  async verifyAccessToken(token: string): Promise<AuthInfo> {
+  async verifyAccessToken(token: string): Promise<SdkAuthInfo> {
     const tokenHash = hashToken(token);
     const now = Math.floor(Date.now() / 1000);
 
@@ -629,14 +631,29 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
         // operations.ts prefers this array over scalar sourceId when set
         // and non-empty.
         allowedSources,
-      } as AuthInfo;
+      } as CoreAuthInfo as SdkAuthInfo;
     }
 
-    // Fallback: legacy access_tokens table (backward compat)
-    const legacyRows = await this.sql`
-      SELECT name FROM access_tokens
-      WHERE token_hash = ${tokenHash} AND revoked_at IS NULL
-    `;
+    // Fallback: legacy access_tokens table (backward compat). Modern legacy
+    // rows may carry permissions.source_id from the pre-OAuth bearer-token
+    // path; OAuth transport must preserve that same source grant instead of
+    // pinning every legacy token to `default`.
+    let legacyRows: Record<string, unknown>[];
+    try {
+      legacyRows = await this.sql`
+        SELECT name, permissions FROM access_tokens
+        WHERE token_hash = ${tokenHash} AND revoked_at IS NULL
+      `;
+    } catch (err) {
+      if (isUndefinedColumnError(err, 'permissions')) {
+        legacyRows = await this.sql`
+          SELECT name FROM access_tokens
+          WHERE token_hash = ${tokenHash} AND revoked_at IS NULL
+        `;
+      } else {
+        throw err;
+      }
+    }
 
     if (legacyRows.length > 0) {
       // Legacy tokens get full admin access (grandfather in).
@@ -646,19 +663,31 @@ export class GBrainOAuthProvider implements OAuthServerProvider {
         UPDATE access_tokens SET last_used_at = now() WHERE token_hash = ${tokenHash}
       `;
       const name = legacyRows[0].name as string;
+      const permissionsRaw = legacyRows[0].permissions;
+      let permissions: unknown = permissionsRaw;
+      if (typeof permissionsRaw === 'string') {
+        try {
+          permissions = JSON.parse(permissionsRaw);
+        } catch {
+          permissions = undefined;
+        }
+      }
+      const sourceGrant = permissions && typeof permissions === 'object'
+        ? (permissions as Record<string, unknown>).source_id
+        : undefined;
+      const { sourceId, allowedSources } = parseLegacyTokenScope(sourceGrant);
       return {
         token,
         clientId: name,
         clientName: name,
         scopes: ['read', 'write', 'admin'],
         expiresAt: Math.floor(Date.now() / 1000) + 365 * 24 * 3600, // Legacy tokens never expire — set 1yr future
-        // v0.34.1 (#861, D13): legacy bearer tokens default to 'default'
-        // source — matches the pre-v0.34 effective behavior where the
-        // serve-http transport fell back to GBRAIN_SOURCE/'default' for
-        // any caller without explicit scope. Operators who want a
-        // narrower scope for legacy tokens migrate to OAuth.
-        sourceId: 'default',
-      } as AuthInfo;
+        // Legacy tokens without an explicit permissions.source_id grant keep
+        // the historical 'default' source floor. Array grants become
+        // allowedSources for federated reads, matching legacy HTTP transport.
+        sourceId,
+        allowedSources,
+      } as CoreAuthInfo as SdkAuthInfo;
     }
 
     throw new InvalidTokenError('Invalid token');
