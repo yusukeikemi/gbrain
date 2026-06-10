@@ -1235,8 +1235,13 @@ export async function importCodeFile(
           // `AND source_id = <scoped>` whenever a worktree pin / --source is
           // in play, and a NULL here never matches that filter — so every
           // scoped call-graph query silently returned 0 rows on
-          // multi-source brains even though the edges existed.
-          source_id: sourceId ?? null,
+          // multi-source brains even though the edges existed. The fallback
+          // is 'default', NOT null: an unscoped import lands its pages under
+          // the schema default (pages.source_id DEFAULT 'default'), so a
+          // NULL-stamped edge would be invisible to the matching scoped
+          // query getCallersOf(sym, { sourceId: 'default' }) — the same bug
+          // through the other door.
+          source_id: sourceId ?? 'default',
         });
       }
 
