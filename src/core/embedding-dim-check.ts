@@ -449,6 +449,11 @@ function isCustomDimValidForProvider(
     };
   }
 
+  // Local/custom gateways (ollama, llama-server, litellm-proxy, etc.) can run any custom models with their native dimensions.
+  if (recipe.id === 'ollama' || recipe.id === 'llama-server' || recipe.id === 'litellm-proxy') {
+    return { valid: true, error: '' };
+  }
+
   // Tier 3: provider not known to support custom dims at all.
   return {
     valid: false,
