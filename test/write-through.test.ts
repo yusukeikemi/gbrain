@@ -138,7 +138,7 @@ describe('writePageThrough', () => {
 
     const res = await writePageThrough(engine, slug, { sourceId: 'default' });
 
-    expect(res).toEqual({ written: false, skipped: 'source_has_no_local_path' });
+    expect(res).toEqual({ written: false, skipped: 'source_repo_belongs_to_other_source' });
     // The sibling source's repo stays clean — the whole point of #2018.
     expect(walkFiles(siblingDir).some((f) => f.endsWith('.md'))).toBe(false);
   });
